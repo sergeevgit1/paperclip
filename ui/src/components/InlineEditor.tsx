@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { cn } from "../lib/utils";
 import { MarkdownEditor, type MarkdownEditorRef, type MentionOption } from "./MarkdownEditor";
 import { useAutosaveIndicator } from "../hooks/useAutosaveIndicator";
+import { t } from "@/i18n";
 
 interface InlineEditorProps {
   value: string;
@@ -24,7 +25,7 @@ export function InlineEditor({
   onSave,
   as: Tag = "span",
   className,
-  placeholder = "Click to edit...",
+  placeholder = t("editor.clickToEdit"),
   multiline = false,
   imageUploadHandler,
   mentions,
@@ -192,13 +193,13 @@ export function InlineEditor({
             )}
           >
             {autosaveState === "saving"
-              ? "Autosaving..."
+              ? t("editor.autosaving")
               : autosaveState === "saved"
-                ? "Saved"
+                ? t("editor.saved")
                 : autosaveState === "error"
-                  ? "Could not save"
-                  : "Idle"}
-          </span>
+                  ? t("editor.couldNotSave")
+                  : t("editor.idle")}
+           </span>
         </div>
       </div>
     );

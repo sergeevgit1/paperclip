@@ -20,8 +20,10 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus } from "lucide-react";
 import type { Goal, Project } from "@paperclipai/shared";
+import { useI18n } from "@/i18n";
 
 export function GoalDetail() {
+  const { t } = useI18n();
   const { goalId } = useParams<{ goalId: string }>();
   const { selectedCompanyId, setSelectedCompanyId } = useCompany();
   const { openNewGoal } = useDialog();
@@ -74,7 +76,7 @@ export function GoalDetail() {
 
   const uploadImage = useMutation({
     mutationFn: async (file: File) => {
-      if (!resolvedCompanyId) throw new Error("No company selected");
+      if (!resolvedCompanyId) throw new Error(t("project.noCompanySelected"));
       return assetsApi.uploadImage(
         resolvedCompanyId,
         file,
@@ -92,11 +94,11 @@ export function GoalDetail() {
   });
 
   useEffect(() => {
-    setBreadcrumbs([
-      { label: "Goals", href: "/goals" },
-      { label: goal?.title ?? goalId ?? "Goal" }
+      setBreadcrumbs([
+      { label: t("goals.title"), href: "/goals" },
+      { label: goal?.title ?? goalId ?? t("goal.titleFallback") }
     ]);
-  }, [setBreadcrumbs, goal, goalId]);
+  }, [setBreadcrumbs, goal, goalId, t]);
 
   useEffect(() => {
     if (goal) {
@@ -136,7 +138,7 @@ export function GoalDetail() {
           onSave={(description) => updateGoal.mutate({ description })}
           as="p"
           className="text-sm text-muted-foreground"
-          placeholder="Add a description..."
+          placeholder={t("dialogs.addDescription")}
           multiline
           imageUploadHandler={async (file) => {
             const asset = await uploadImage.mutateAsync(file);
@@ -148,10 +150,10 @@ export function GoalDetail() {
       <Tabs defaultValue="children">
         <TabsList>
           <TabsTrigger value="children">
-            Sub-Goals ({childGoals.length})
+            {t("goal.subGoals", { count: childGoals.length })}
           </TabsTrigger>
           <TabsTrigger value="projects">
-            Projects ({linkedProjects.length})
+            {t("goal.projects", { count: linkedProjects.length })}
           </TabsTrigger>
         </TabsList>
 
@@ -163,11 +165,11 @@ export function GoalDetail() {
               onClick={() => openNewGoal({ parentId: goalId })}
             >
               <Plus className="h-3.5 w-3.5 mr-1.5" />
-              Sub Goal
+              {t("goal.subGoal")}
             </Button>
           </div>
           {childGoals.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No sub-goals.</p>
+            <p className="text-sm text-muted-foreground">{t("goal.noSubGoals")}</p>
           ) : (
             <GoalTree goals={childGoals} goalLink={(g) => `/goals/${g.id}`} />
           )}
@@ -175,7 +177,7 @@ export function GoalDetail() {
 
         <TabsContent value="projects" className="mt-4">
           {linkedProjects.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No linked projects.</p>
+            <p className="text-sm text-muted-foreground">{t("goal.noLinkedProjects")}</p>
           ) : (
             <div className="border border-border">
               {linkedProjects.map((project) => (

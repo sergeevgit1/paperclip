@@ -7,11 +7,11 @@ import {
 } from "../../components/agent-config-primitives";
 import { ChoosePathButton } from "../../components/PathInstructionsModal";
 import { LocalWorkspaceRuntimeFields } from "../local-workspace-runtime-fields";
+import { t } from "@/i18n";
 
 const inputClass =
   "w-full rounded-md border border-border px-2.5 py-1.5 bg-transparent outline-none text-sm font-mono placeholder:text-muted-foreground/40";
-const instructionsFileHint =
-  "Absolute path to a markdown file (e.g. AGENTS.md) that defines this agent's behavior. Injected into the system prompt at runtime. Note: Codex may still auto-apply repo-scoped AGENTS.md files from the workspace.";
+const instructionsFileHint = t("agentConfig.codexInstructionsHelp");
 
 export function CodexLocalConfigFields({
   mode,
@@ -31,7 +31,7 @@ export function CodexLocalConfigFields({
   return (
     <>
       {!hideInstructionsFile && (
-        <Field label="Agent instructions file" hint={instructionsFileHint}>
+        <Field label={t("agentConfig.instructionsFile")} hint={instructionsFileHint}>
           <div className="flex items-center gap-2">
             <DraftInput
               value={
@@ -50,14 +50,14 @@ export function CodexLocalConfigFields({
               }
               immediate
               className={inputClass}
-              placeholder="/absolute/path/to/AGENTS.md"
+              placeholder={t("agentConfig.instructionsFilePlaceholder")}
             />
             <ChoosePathButton />
           </div>
         </Field>
       )}
       <ToggleField
-        label="Bypass sandbox"
+        label={t("agentConfig.bypassSandbox")}
         hint={help.dangerouslyBypassSandbox}
         checked={
           isCreate
@@ -75,7 +75,7 @@ export function CodexLocalConfigFields({
         }
       />
       <ToggleField
-        label="Enable search"
+        label={t("agentConfig.enableSearch")}
         hint={help.search}
         checked={
           isCreate

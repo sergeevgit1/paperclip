@@ -12,8 +12,10 @@ import { createIssueDetailLocationState } from "../lib/issueDetailBreadcrumb";
 import { EmptyState } from "../components/EmptyState";
 import { IssuesList } from "../components/IssuesList";
 import { CircleDot } from "lucide-react";
+import { useI18n } from "@/i18n";
 
 export function Issues() {
+  const { t } = useI18n();
   const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const location = useLocation();
@@ -67,16 +69,16 @@ export function Issues() {
 
   const issueLinkState = useMemo(
     () =>
-      createIssueDetailLocationState(
-        "Issues",
+        createIssueDetailLocationState(
+        t("issues.title"),
         `${location.pathname}${location.search}${location.hash}`,
       ),
-    [location.pathname, location.search, location.hash],
+    [location.pathname, location.search, location.hash, t],
   );
 
   useEffect(() => {
-    setBreadcrumbs([{ label: "Issues" }]);
-  }, [setBreadcrumbs]);
+    setBreadcrumbs([{ label: t("issues.title") }]);
+  }, [setBreadcrumbs, t]);
 
   const { data: issues, isLoading, error } = useQuery({
     queryKey: [...queryKeys.issues.list(selectedCompanyId!), "participant-agent", participantAgentId ?? "__all__"],
@@ -93,7 +95,7 @@ export function Issues() {
   });
 
   if (!selectedCompanyId) {
-    return <EmptyState icon={CircleDot} message="Select a company to view issues." />;
+    return <EmptyState icon={CircleDot} message={t("issues.selectCompany")} />;
   }
 
   return (

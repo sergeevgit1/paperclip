@@ -33,6 +33,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useI18n } from "@/i18n";
 
 const concurrencyPolicies = ["coalesce_if_active", "always_enqueue", "skip_if_active"];
 const catchUpPolicies = ["skip_missed", "enqueue_missed_with_cap"];
@@ -63,6 +64,7 @@ function nextRoutineStatus(currentStatus: string, enabled: boolean) {
 }
 
 export function Routines() {
+  const { t } = useI18n();
   const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const queryClient = useQueryClient();
@@ -87,8 +89,8 @@ export function Routines() {
   });
 
   useEffect(() => {
-    setBreadcrumbs([{ label: "Routines" }]);
-  }, [setBreadcrumbs]);
+    setBreadcrumbs([{ label: t("routines.title") }]);
+  }, [setBreadcrumbs, t]);
 
   const { data: routines, isLoading, error } = useQuery({
     queryKey: queryKeys.routines.list(selectedCompanyId!),
@@ -130,8 +132,8 @@ export function Routines() {
       setAdvancedOpen(false);
       await queryClient.invalidateQueries({ queryKey: queryKeys.routines.list(selectedCompanyId!) });
       pushToast({
-        title: "Routine created",
-        body: "Add the first trigger to turn it into a live workflow.",
+        title: t("routines.new"),
+        body: t("routines.newDescription"),
         tone: "success",
       });
       navigate(`/routines/${routine.id}?tab=triggers`);
@@ -155,7 +157,7 @@ export function Routines() {
     onError: (mutationError) => {
       pushToast({
         title: "Failed to update routine",
-        body: mutationError instanceof Error ? mutationError.message : "Paperclip could not update the routine.",
+        body: mutationError instanceof Error ? mutationError.message : t("routines.failedUpdateBody"),
         tone: "error",
       });
     },
@@ -178,7 +180,7 @@ export function Routines() {
     onError: (mutationError) => {
       pushToast({
         title: "Routine run failed",
-        body: mutationError instanceof Error ? mutationError.message : "Paperclip could not start the routine run.",
+        body: mutationError instanceof Error ? mutationError.message : t("routines.runFailedBody"),
         tone: "error",
       });
     },
@@ -218,7 +220,7 @@ export function Routines() {
   const currentProject = draft.projectId ? projectById.get(draft.projectId) ?? null : null;
 
   if (!selectedCompanyId) {
-    return <EmptyState icon={Repeat} message="Select a company to view routines." />;
+    return <EmptyState icon={Repeat} message={t("routines.selectCompany")} />;
   }
 
   if (isLoading) {
@@ -230,16 +232,16 @@ export function Routines() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
-            Routines
-            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">Beta</span>
+            {t("routines.title")}
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">{t("routines.beta")}</span>
           </h1>
           <p className="text-sm text-muted-foreground">
-            Recurring work definitions that materialize into auditable execution issues.
+            {t("routines.subtitle")}
           </p>
         </div>
         <Button onClick={() => setComposerOpen(true)}>
           <Plus className="mr-2 h-4 w-4" />
-          Create routine
+          {t("routines.create")}
         </Button>
       </div>
 
@@ -254,10 +256,10 @@ export function Routines() {
         <DialogContent showCloseButton={false} className="max-w-3xl gap-0 overflow-hidden p-0">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 px-5 py-3">
             <div>
-              <p className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">New routine</p>
-              <p className="text-sm text-muted-foreground">
-                Define the recurring work first. Trigger setup comes next on the detail page.
-              </p>
+               <p className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">{t("routines.new")}</p>
+               <p className="text-sm text-muted-foreground">
+                 {t("routines.newDescription")}
+               </p>
             </div>
             <Button
               variant="ghost"
@@ -268,15 +270,15 @@ export function Routines() {
               }}
               disabled={createRoutine.isPending}
             >
-              Cancel
-            </Button>
+               {t("routines.cancel")}
+             </Button>
           </div>
 
           <div className="px-5 pt-5 pb-3">
             <textarea
               ref={titleInputRef}
               className="w-full resize-none overflow-hidden bg-transparent text-xl font-semibold outline-none placeholder:text-muted-foreground/50"
-              placeholder="Routine title"
+               placeholder={t("routines.titlePlaceholder")}
               rows={1}
               value={draft.title}
               onChange={(event) => {
@@ -309,15 +311,15 @@ export function Routines() {
           <div className="px-5 pb-3">
             <div className="overflow-x-auto overscroll-x-contain">
               <div className="inline-flex min-w-full flex-wrap items-center gap-2 text-sm text-muted-foreground sm:min-w-max sm:flex-nowrap">
-                <span>For</span>
+                 <span>{t("routines.for")}</span>
                 <InlineEntitySelector
                   ref={assigneeSelectorRef}
                   value={draft.assigneeAgentId}
                   options={assigneeOptions}
-                  placeholder="Assignee"
-                  noneLabel="No assignee"
-                  searchPlaceholder="Search assignees..."
-                  emptyMessage="No assignees found."
+                   placeholder={t("issues.assignee")}
+                   noneLabel={t("issues.noAssignee")}
+                   searchPlaceholder={t("commentThread.searchAssignees")}
+                   emptyMessage={t("commentThread.noAssigneesFound")}
                   onChange={(assigneeAgentId) => {
                     if (assigneeAgentId) trackRecentAssignee(assigneeAgentId);
                     setDraft((current) => ({ ...current, assigneeAgentId }));
@@ -340,8 +342,8 @@ export function Routines() {
                         <span className="truncate">{option.label}</span>
                       )
                     ) : (
-                      <span className="text-muted-foreground">Assignee</span>
-                    )
+                       <span className="text-muted-foreground">{t("issues.assignee")}</span>
+                     )
                   }
                   renderOption={(option) => {
                     if (!option.id) return <span className="truncate">{option.label}</span>;
@@ -354,7 +356,7 @@ export function Routines() {
                     );
                   }}
                 />
-                <span>in</span>
+                 <span>{t("routines.in")}</span>
                 <InlineEntitySelector
                   ref={projectSelectorRef}
                   value={draft.projectId}

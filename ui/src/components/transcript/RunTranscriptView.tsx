@@ -11,6 +11,7 @@ import {
   User,
   Wrench,
 } from "lucide-react";
+import { t } from "@/i18n";
 
 export type TranscriptMode = "nice" | "raw";
 export type TranscriptDensity = "comfortable" | "compact";
@@ -198,8 +199,8 @@ function summarizeToolInput(name: string, input: unknown, density: TranscriptDen
   }
 
   const keys = Object.keys(record);
-  if (keys.length === 0) return `No ${name} input`;
-  if (keys.length === 1) return truncate(`${keys[0]} payload`, compactMax);
+  if (keys.length === 0) return t("transcript.noToolInput", { name });
+  if (keys.length === 1) return truncate(t("transcript.payload", { key: keys[0] }), compactMax);
   return truncate(`${keys.length} fields: ${keys.slice(0, 3).join(", ")}`, compactMax);
 }
 
@@ -242,20 +243,20 @@ function isCommandTool(name: string, input: unknown): boolean {
 }
 
 function displayToolName(name: string, input: unknown): string {
-  if (isCommandTool(name, input)) return "Executing command";
+  if (isCommandTool(name, input)) return t("transcript.executingCommand");
   return humanizeLabel(name);
 }
 
 function summarizeToolResult(result: string | undefined, isError: boolean | undefined, density: TranscriptDensity): string {
-  if (!result) return isError ? "Tool failed" : "Waiting for result";
+  if (!result) return isError ? t("transcript.toolFailed") : t("transcript.waitingForResult");
   const structured = parseStructuredToolResult(result);
   if (structured) {
     if (structured.body) {
       return truncate(structured.body.split("\n")[0] ?? structured.body, density === "compact" ? 84 : 140);
     }
-    if (structured.status === "completed") return "Completed";
+    if (structured.status === "completed") return t("transcript.completed");
     if (structured.status === "failed" || structured.status === "error") {
-      return structured.exitCode ? `Failed with exit code ${structured.exitCode}` : "Failed";
+      return structured.exitCode ? t("transcript.failedWithExitCode", { code: structured.exitCode }) : t("transcript.failed");
     }
   }
   const lines = result
@@ -271,7 +272,7 @@ function parseSystemActivity(text: string): { activityId?: string; name: string;
   if (!match) return null;
   return {
     status: match[1].toLowerCase() === "started" ? "running" : "completed",
-    name: humanizeLabel(match[2] ?? "Activity"),
+    name: humanizeLabel(match[2] ?? t("transcript.activity")),
     activityId: match[3] || undefined,
   };
 }
@@ -428,7 +429,7 @@ export function normalizeTranscript(entries: TranscriptEntry[], streaming: boole
         ts: entry.ts,
         label: "result",
         tone: entry.isError ? "error" : "info",
-        text: entry.text.trim() || entry.errors[0] || (entry.isError ? "Run failed" : "Completed"),
+        text: entry.text.trim() || entry.errors[0] || (entry.isError ? t("transcript.runFailed") : t("transcript.completed")),
       });
       continue;
     }
@@ -664,7 +665,7 @@ function TranscriptToolCard({
                   "overflow-x-auto whitespace-pre-wrap break-words font-mono text-[11px]",
                   block.status === "error" ? "text-red-700 dark:text-red-300" : "text-foreground/80",
                 )}>
-                  {block.result ? formatToolPayload(block.result) : "Waiting for result..."}
+                  {block.result ? formatToolPayload(block.result) : t("transcript.waitingForResultEllipsis")}
                 </pre>
               </div>
             </div>

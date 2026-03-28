@@ -5,6 +5,7 @@ import { formatCents } from "../lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { t } from "@/i18n";
 
 function centsInputValue(value: number) {
   return (value / 100).toFixed(2);
@@ -55,14 +56,14 @@ export function BudgetIncidentCard({
           <PauseCircle className="mt-0.5 h-4 w-4 shrink-0" />
           <div>
             {incident.scopeType === "project"
-              ? "Project execution is paused. New work in this project will not start until you resolve the budget incident."
-              : "This scope is paused. New heartbeats will not start until you resolve the budget incident."}
+              ? t("budgetIncident.projectPaused")
+              : t("budgetIncident.scopePaused")}
           </div>
         </div>
 
         <div className="rounded-xl border border-border/60 bg-background/60 p-3">
           <label className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-            New budget (USD)
+            {t("budgetIncident.newBudget")}
           </label>
           <div className="mt-2 flex flex-col gap-3 sm:flex-row">
             <Input
@@ -79,19 +80,19 @@ export function BudgetIncidentCard({
               }}
             >
               <ArrowUpRight className="h-4 w-4" />
-              {isMutating ? "Applying..." : "Raise budget & resume"}
+              {isMutating ? t("budgetIncident.applying") : t("budgetIncident.raiseResume")}
             </Button>
           </div>
           {parsed !== null && parsed <= incident.amountObserved ? (
             <p className="mt-2 text-xs text-red-200/80">
-              The new budget must exceed current observed spend.
+              {t("budgetIncident.budgetMustExceed")}
             </p>
           ) : null}
         </div>
 
         <div className="flex justify-end">
           <Button variant="ghost" className="text-muted-foreground" disabled={isMutating} onClick={onKeepPaused}>
-            Keep paused
+            {t("budgetIncident.keepPaused")}
           </Button>
         </div>
       </CardContent>

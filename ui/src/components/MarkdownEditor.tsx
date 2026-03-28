@@ -33,6 +33,7 @@ import { applyMentionChipDecoration, clearMentionChipDecoration, parseMentionChi
 import { MentionAwareLinkNode, mentionAwareLinkNodeReplacement } from "../lib/mention-aware-link-node";
 import { mentionDeletionPlugin } from "../lib/mention-deletion";
 import { cn } from "../lib/utils";
+import { t } from "@/i18n";
 
 /* ---- Mention types ---- */
 
@@ -248,7 +249,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>
     const imageHandler = hasImageUpload
       ? async (file: File) => {
           const handler = imageUploadHandlerRef.current;
-          if (!handler) throw new Error("No image upload handler");
+          if (!handler) throw new Error(t("editor.noImageUploadHandler"));
           try {
             const src = await handler(file);
             setUploadError(null);
@@ -272,7 +273,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>
             }, 100);
             return src;
           } catch (err) {
-            const message = err instanceof Error ? err.message : "Image upload failed";
+            const message = err instanceof Error ? err.message : t("editor.imageUploadFailed");
             setUploadError(message);
             throw err;
           }
@@ -594,7 +595,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>
                 <span>{option.name}</span>
                 {option.kind === "project" && option.projectId && (
                   <span className="ml-auto text-[10px] uppercase tracking-wide text-muted-foreground">
-                    Project
+                    {t("editor.project")}
                   </span>
                 )}
               </button>
@@ -610,7 +611,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>
             !bordered && "inset-0 rounded-sm",
           )}
         >
-          Drop image to upload
+          {t("editor.dropImage")}
         </div>
       )}
       {uploadError && (

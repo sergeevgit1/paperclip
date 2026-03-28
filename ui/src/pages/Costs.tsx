@@ -32,6 +32,7 @@ import { billingTypeDisplayName, cn, formatCents, formatTokens, providerDisplayN
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useI18n } from "@/i18n";
 
 const NO_COMPANY = "__none__";
 
@@ -108,37 +109,38 @@ function FinanceSummaryCard({
   estimatedDebitCents: number;
   eventCount: number;
 }) {
+  const { t } = useI18n();
   return (
     <Card>
       <CardHeader className="px-5 pt-5 pb-2">
-        <CardTitle className="text-base">Finance ledger</CardTitle>
+        <CardTitle className="text-base">{t("costs.financeLedger")}</CardTitle>
         <CardDescription>
-          Account-level charges that do not map to a single inference request.
+          {t("costs.financeLedgerDescription")}
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-3 px-5 pb-5 pt-2 sm:grid-cols-2 xl:grid-cols-4">
         <MetricTile
-          label="Debits"
+          label={t("costs.debits")}
           value={formatCents(debitCents)}
-          subtitle={`${eventCount} total event${eventCount === 1 ? "" : "s"} in range`}
+          subtitle={t("costs.eventsInRange", { count: eventCount })}
           icon={ArrowUpRight}
         />
         <MetricTile
-          label="Credits"
+          label={t("costs.credits")}
           value={formatCents(creditCents)}
-          subtitle="Refunds, offsets, and credit returns"
+          subtitle={t("costs.refundsOffsets")}
           icon={ArrowDownLeft}
         />
         <MetricTile
-          label="Net"
+          label={t("costs.net")}
           value={formatCents(netCents)}
-          subtitle="Debit minus credit for the selected period"
+          subtitle={t("costs.debitMinusCredit")}
           icon={ReceiptText}
         />
         <MetricTile
-          label="Estimated"
+          label={t("costs.estimated")}
           value={formatCents(estimatedDebitCents)}
-          subtitle="Estimated debits that are not yet invoice-authoritative"
+          subtitle={t("costs.estimatedDebits")}
           icon={Coins}
         />
       </CardContent>
@@ -147,6 +149,7 @@ function FinanceSummaryCard({
 }
 
 export function Costs() {
+  const { t } = useI18n();
   const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const queryClient = useQueryClient();
@@ -168,8 +171,8 @@ export function Costs() {
   } = useDateRange();
 
   useEffect(() => {
-    setBreadcrumbs([{ label: "Costs" }]);
-  }, [setBreadcrumbs]);
+    setBreadcrumbs([{ label: t("costs.title") }]);
+  }, [setBreadcrumbs, t]);
 
   const [today, setToday] = useState(() => new Date().toDateString());
   const todayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -464,7 +467,7 @@ export function Costs() {
         value: "all",
         label: (
           <span className="flex items-center gap-1.5">
-            <span>All providers</span>
+            <span>{t("costs.allProviders")}</span>
             {providerKeys.length > 0 ? (
               <>
                 <span className="font-mono text-xs text-muted-foreground">{formatTokens(allTokens)}</span>
@@ -496,7 +499,7 @@ export function Costs() {
         value: "all",
         label: (
           <span className="flex items-center gap-1.5">
-            <span>All billers</span>
+            <span>{t("costs.allBillers")}</span>
             {billerKeys.length > 0 ? (
               <>
                 <span className="font-mono text-xs text-muted-foreground">{formatTokens(allTokens)}</span>
@@ -529,7 +532,7 @@ export function Costs() {
   }), [budgetPolicies]);
 
   if (!selectedCompanyId) {
-    return <EmptyState icon={DollarSign} message="Select a company to view costs." />;
+    return <EmptyState icon={DollarSign} message={t("costs.selectCompany")} />;
   }
 
   const showCustomPrompt = preset === "custom" && !customReady;
@@ -541,7 +544,7 @@ export function Costs() {
       <div className="space-y-5">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
-                <h1 className="text-3xl font-semibold tracking-tight">Costs</h1>
+                <h1 className="text-3xl font-semibold tracking-tight">{t("costs.title")}</h1>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
                   Inference spend, platform fees, credits, and live quota windows.
                 </p>
@@ -569,7 +572,7 @@ export function Costs() {
                 onChange={(event) => setCustomFrom(event.target.value)}
                 className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground"
               />
-              <span className="text-sm text-muted-foreground">to</span>
+              <span className="text-sm text-muted-foreground">{t("costs.to")}</span>
               <input
                 type="date"
                 value={customTo}

@@ -32,10 +32,92 @@ import {
 import { queryKeys } from "../lib/queryKeys";
 import { cn } from "../lib/utils";
 import { NotFoundPage } from "../pages/NotFound";
+import { useI18n } from "@/i18n";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 
 const INSTANCE_SETTINGS_MEMORY_KEY = "paperclip.lastInstanceSettingsPath";
+
+type HeaderControlsProps = {
+  locale: string;
+  nextLocale: string;
+  nextLocaleLabel: string;
+  theme: string;
+  nextTheme: string;
+  instanceSettingsTarget: string;
+  version?: string;
+  onSetLocale: (locale: "en" | "ru") => void;
+  onToggleTheme: () => void;
+};
+
+function HeaderControls({
+  locale,
+  nextLocale,
+  nextLocaleLabel,
+  theme,
+  nextTheme,
+  instanceSettingsTarget,
+  version,
+  onSetLocale,
+  onToggleTheme,
+}: HeaderControlsProps) {
+  const { t } = useI18n();
+
+  return (
+    <div className="flex items-center gap-1.5">
+      {version && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="px-2 text-xs text-muted-foreground shrink-0 cursor-default">v</span>
+          </TooltipTrigger>
+          <TooltipContent>v{version}</TooltipContent>
+        </Tooltip>
+      )}
+      <Button variant="ghost" size="icon-sm" className="text-muted-foreground shrink-0" asChild>
+        <a
+          href="https://docs.paperclip.ing/"
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={t("common.documentation")}
+          title={t("common.documentation")}
+        >
+          <BookOpen className="h-4 w-4" />
+        </a>
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        className="text-muted-foreground shrink-0 px-2 text-[11px] font-semibold"
+        onClick={() => onSetLocale(nextLocale as "en" | "ru")}
+        aria-label={t("layout.switchLanguage", { locale: nextLocaleLabel })}
+        title={t("layout.switchLanguage", { locale: nextLocaleLabel })}
+      >
+        {t(`common.locale.${locale}`)}
+      </Button>
+      <Button variant="ghost" size="icon-sm" className="text-muted-foreground shrink-0" asChild>
+        <Link
+          to={instanceSettingsTarget}
+          aria-label={t("layout.instanceSettings")}
+          title={t("layout.instanceSettings")}
+        >
+          <Settings className="h-4 w-4" />
+        </Link>
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        className="text-muted-foreground shrink-0"
+        onClick={onToggleTheme}
+        aria-label={t("layout.switchTheme", { theme: nextTheme })}
+        title={t("layout.switchTheme", { theme: nextTheme })}
+      >
+        {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+      </Button>
+    </div>
+  );
+}
 
 function readRememberedInstanceSettingsPath(): string {
   if (typeof window === "undefined") return DEFAULT_INSTANCE_SETTINGS_PATH;
@@ -47,6 +129,7 @@ function readRememberedInstanceSettingsPath(): string {
 }
 
 export function Layout() {
+  const { t, locale, setLocale } = useI18n();
   const { sidebarOpen, setSidebarOpen, toggleSidebar, isMobile } = useSidebar();
   const { openNewIssue, openOnboarding } = useDialog();
   const { togglePanelVisible } = usePanel();
@@ -67,7 +150,9 @@ export function Layout() {
   const lastMainScrollTop = useRef(0);
   const [mobileNavVisible, setMobileNavVisible] = useState(true);
   const [instanceSettingsTarget, setInstanceSettingsTarget] = useState<string>(() => readRememberedInstanceSettingsPath());
-  const nextTheme = theme === "dark" ? "light" : "dark";
+  const nextTheme = theme === "dark" ? t("layout.theme.light") : t("layout.theme.dark");
+  const nextLocale = locale === "en" ? "ru" : "en";
+  const nextLocaleLabel = t(`common.locale.${nextLocale}`);
   const matchedCompany = useMemo(() => {
     if (!companyPrefix) return null;
     const requestedPrefix = companyPrefix.toUpperCase();
@@ -269,7 +354,7 @@ export function Layout() {
         href="#main-content"
         className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[200] focus:rounded-md focus:bg-background focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        Skip to Main Content
+        {t("navigation.skipToMainContent")}
       </a>
       <WorktreeBanner />
       <DevRestartBanner devServer={health?.devServer} />
@@ -279,7 +364,7 @@ export function Layout() {
             type="button"
             className="fixed inset-0 z-40 bg-black/50"
             onClick={() => setSidebarOpen(false)}
-            aria-label="Close sidebar"
+            aria-label={t("layout.closeSidebar")}
           />
         )}
 
@@ -293,50 +378,6 @@ export function Layout() {
             <div className="flex flex-1 min-h-0 overflow-hidden">
               <CompanyRail />
               {isInstanceSettingsRoute ? <InstanceSidebar /> : <Sidebar />}
-            </div>
-            <div className="border-t border-r border-border px-3 py-2 bg-background">
-              <div className="flex items-center gap-1">
-                <a
-                  href="https://docs.paperclip.ing/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium transition-colors text-foreground/80 hover:bg-accent/50 hover:text-foreground flex-1 min-w-0"
-                >
-                  <BookOpen className="h-4 w-4 shrink-0" />
-                  <span className="truncate">Documentation</span>
-                </a>
-                {health?.version && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span className="px-2 text-xs text-muted-foreground shrink-0 cursor-default">v</span>
-                    </TooltipTrigger>
-                    <TooltipContent>v{health.version}</TooltipContent>
-                  </Tooltip>
-                )}
-                <Button variant="ghost" size="icon-sm" className="text-muted-foreground shrink-0" asChild>
-                  <Link
-                    to={instanceSettingsTarget}
-                    aria-label="Instance settings"
-                    title="Instance settings"
-                    onClick={() => {
-                      if (isMobile) setSidebarOpen(false);
-                    }}
-                  >
-                    <Settings className="h-4 w-4" />
-                  </Link>
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  className="text-muted-foreground shrink-0"
-                  onClick={toggleTheme}
-                  aria-label={`Switch to ${nextTheme} mode`}
-                  title={`Switch to ${nextTheme} mode`}
-                >
-                  {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-                </Button>
-              </div>
             </div>
           </div>
         ) : (
@@ -352,50 +393,6 @@ export function Layout() {
                 {isInstanceSettingsRoute ? <InstanceSidebar /> : <Sidebar />}
               </div>
             </div>
-            <div className="border-t border-r border-border px-3 py-2">
-              <div className="flex items-center gap-1">
-                <a
-                  href="https://docs.paperclip.ing/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium transition-colors text-foreground/80 hover:bg-accent/50 hover:text-foreground flex-1 min-w-0"
-                >
-                  <BookOpen className="h-4 w-4 shrink-0" />
-                  <span className="truncate">Documentation</span>
-                </a>
-                {health?.version && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span className="px-2 text-xs text-muted-foreground shrink-0 cursor-default">v</span>
-                    </TooltipTrigger>
-                    <TooltipContent>v{health.version}</TooltipContent>
-                  </Tooltip>
-                )}
-                <Button variant="ghost" size="icon-sm" className="text-muted-foreground shrink-0" asChild>
-                  <Link
-                    to={instanceSettingsTarget}
-                    aria-label="Instance settings"
-                    title="Instance settings"
-                    onClick={() => {
-                      if (isMobile) setSidebarOpen(false);
-                    }}
-                  >
-                    <Settings className="h-4 w-4" />
-                  </Link>
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  className="text-muted-foreground shrink-0"
-                  onClick={toggleTheme}
-                  aria-label={`Switch to ${nextTheme} mode`}
-                  title={`Switch to ${nextTheme} mode`}
-                >
-                  {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-                </Button>
-              </div>
-            </div>
           </div>
         )}
 
@@ -405,7 +402,21 @@ export function Layout() {
               isMobile && "sticky top-0 z-20 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/85",
             )}
           >
-            <BreadcrumbBar />
+            <BreadcrumbBar
+              trailing={
+                <HeaderControls
+                  locale={locale}
+                  nextLocale={nextLocale}
+                  nextLocaleLabel={nextLocaleLabel}
+                  theme={theme}
+                  nextTheme={nextTheme}
+                  instanceSettingsTarget={instanceSettingsTarget}
+                  version={health?.version}
+                  onSetLocale={setLocale}
+                  onToggleTheme={toggleTheme}
+                />
+              }
+            />
           </div>
           <div className={cn(isMobile ? "block" : "flex flex-1 min-h-0")}>
             <main

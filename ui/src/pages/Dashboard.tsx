@@ -24,6 +24,7 @@ import { ActiveAgentsPanel } from "../components/ActiveAgentsPanel";
 import { ChartCard, RunActivityChart, PriorityChart, IssueStatusChart, SuccessRateChart } from "../components/ActivityCharts";
 import { PageSkeleton } from "../components/PageSkeleton";
 import type { Agent, Issue } from "@paperclipai/shared";
+import { useI18n } from "@/i18n";
 import { PluginSlotOutlet } from "@/plugins/slots";
 
 function getRecentIssues(issues: Issue[]): Issue[] {
@@ -32,6 +33,7 @@ function getRecentIssues(issues: Issue[]): Issue[] {
 }
 
 export function Dashboard() {
+  const { t } = useI18n();
   const { selectedCompanyId, companies } = useCompany();
   const { openOnboarding } = useDialog();
   const { setBreadcrumbs } = useBreadcrumbs();
@@ -47,8 +49,8 @@ export function Dashboard() {
   });
 
   useEffect(() => {
-    setBreadcrumbs([{ label: "Dashboard" }]);
-  }, [setBreadcrumbs]);
+    setBreadcrumbs([{ label: t("dashboard.title") }]);
+  }, [setBreadcrumbs, t]);
 
   const { data, isLoading, error } = useQuery({
     queryKey: queryKeys.dashboard(selectedCompanyId!),
@@ -168,14 +170,14 @@ export function Dashboard() {
       return (
         <EmptyState
           icon={LayoutDashboard}
-          message="Welcome to Paperclip. Set up your first company and agent to get started."
-          action="Get Started"
+          message={t("dashboard.empty.welcome")}
+          action={t("dashboard.empty.getStarted")}
           onAction={openOnboarding}
         />
       );
     }
     return (
-      <EmptyState icon={LayoutDashboard} message="Create or select a company to view the dashboard." />
+      <EmptyState icon={LayoutDashboard} message={t("dashboard.empty.selectCompany")} />
     );
   }
 
@@ -192,16 +194,16 @@ export function Dashboard() {
       {hasNoAgents && (
         <div className="flex items-center justify-between gap-3 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 dark:border-amber-500/25 dark:bg-amber-950/60">
           <div className="flex items-center gap-2.5">
-            <Bot className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
-            <p className="text-sm text-amber-900 dark:text-amber-100">
-              You have no agents.
-            </p>
-          </div>
+              <Bot className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+              <p className="text-sm text-amber-900 dark:text-amber-100">
+                {t("dashboard.noAgents")}
+              </p>
+            </div>
           <button
             onClick={() => openOnboarding({ initialStep: 2, companyId: selectedCompanyId! })}
             className="text-sm font-medium text-amber-700 hover:text-amber-900 dark:text-amber-300 dark:hover:text-amber-100 underline underline-offset-2 shrink-0"
           >
-            Create one here
+            {t("dashboard.createAgentHere")}
           </button>
         </div>
       )}
@@ -216,15 +218,21 @@ export function Dashboard() {
                 <PauseCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-300" />
                 <div>
                   <p className="text-sm font-medium text-red-50">
-                    {data.budgets.activeIncidents} active budget incident{data.budgets.activeIncidents === 1 ? "" : "s"}
+                    {data.budgets.activeIncidents === 1
+                      ? t("dashboard.budgetIncident.one", { count: data.budgets.activeIncidents })
+                      : t("dashboard.budgetIncident.other", { count: data.budgets.activeIncidents })}
                   </p>
                   <p className="text-xs text-red-100/70">
-                    {data.budgets.pausedAgents} agents paused · {data.budgets.pausedProjects} projects paused · {data.budgets.pendingApprovals} pending budget approvals
+                    {t("dashboard.budgetSummary", {
+                      agents: data.budgets.pausedAgents,
+                      projects: data.budgets.pausedProjects,
+                      approvals: data.budgets.pendingApprovals,
+                    })}
                   </p>
                 </div>
               </div>
               <Link to="/costs" className="text-sm underline underline-offset-2 text-red-100">
-                Open budgets
+                {t("dashboard.openBudgets")}
               </Link>
             </div>
           ) : null}
@@ -233,67 +241,74 @@ export function Dashboard() {
             <MetricCard
               icon={Bot}
               value={data.agents.active + data.agents.running + data.agents.paused + data.agents.error}
-              label="Agents Enabled"
+              label={t("dashboard.agentsEnabled")}
               to="/agents"
               description={
                 <span>
-                  {data.agents.running} running{", "}
-                  {data.agents.paused} paused{", "}
-                  {data.agents.error} errors
+                  {t("dashboard.metric.runningPausedErrors", {
+                    running: data.agents.running,
+                    paused: data.agents.paused,
+                    errors: data.agents.error,
+                  })}
                 </span>
               }
             />
             <MetricCard
               icon={CircleDot}
               value={data.tasks.inProgress}
-              label="Tasks In Progress"
+              label={t("dashboard.tasksInProgress")}
               to="/issues"
               description={
                 <span>
-                  {data.tasks.open} open{", "}
-                  {data.tasks.blocked} blocked
+                  {t("dashboard.metric.openBlocked", {
+                    open: data.tasks.open,
+                    blocked: data.tasks.blocked,
+                  })}
                 </span>
               }
             />
             <MetricCard
               icon={DollarSign}
               value={formatCents(data.costs.monthSpendCents)}
-              label="Month Spend"
+              label={t("dashboard.monthSpend")}
               to="/costs"
               description={
                 <span>
                   {data.costs.monthBudgetCents > 0
-                    ? `${data.costs.monthUtilizationPercent}% of ${formatCents(data.costs.monthBudgetCents)} budget`
-                    : "Unlimited budget"}
+                    ? t("dashboard.metric.monthBudget", {
+                        percent: data.costs.monthUtilizationPercent,
+                        budget: formatCents(data.costs.monthBudgetCents),
+                      })
+                    : t("dashboard.metric.unlimitedBudget")}
                 </span>
               }
             />
             <MetricCard
               icon={ShieldCheck}
               value={data.pendingApprovals + data.budgets.pendingApprovals}
-              label="Pending Approvals"
+              label={t("dashboard.pendingApprovals")}
               to="/approvals"
               description={
                 <span>
                   {data.budgets.pendingApprovals > 0
-                    ? `${data.budgets.pendingApprovals} budget overrides awaiting board review`
-                    : "Awaiting board review"}
+                    ? t("dashboard.metric.pendingBudgetReview", { count: data.budgets.pendingApprovals })
+                    : t("dashboard.metric.awaitingBoardReview")}
                 </span>
               }
             />
           </div>
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <ChartCard title="Run Activity" subtitle="Last 14 days">
+            <ChartCard title={t("dashboard.runActivity")} subtitle={t("dashboard.last14Days")}>
               <RunActivityChart runs={runs ?? []} />
             </ChartCard>
-            <ChartCard title="Issues by Priority" subtitle="Last 14 days">
+            <ChartCard title={t("dashboard.issuesByPriority")} subtitle={t("dashboard.last14Days")}>
               <PriorityChart issues={issues ?? []} />
             </ChartCard>
-            <ChartCard title="Issues by Status" subtitle="Last 14 days">
+            <ChartCard title={t("dashboard.issuesByStatus")} subtitle={t("dashboard.last14Days")}>
               <IssueStatusChart issues={issues ?? []} />
             </ChartCard>
-            <ChartCard title="Success Rate" subtitle="Last 14 days">
+            <ChartCard title={t("dashboard.successRate")} subtitle={t("dashboard.last14Days")}>
               <SuccessRateChart runs={runs ?? []} />
             </ChartCard>
           </div>
@@ -310,7 +325,7 @@ export function Dashboard() {
             {recentActivity.length > 0 && (
               <div className="min-w-0">
                 <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-                  Recent Activity
+                  {t("dashboard.recentActivity")}
                 </h3>
                 <div className="border border-border divide-y divide-border overflow-hidden">
                   {recentActivity.map((event) => (
@@ -330,11 +345,11 @@ export function Dashboard() {
             {/* Recent Tasks */}
             <div className="min-w-0">
               <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-                Recent Tasks
+                {t("dashboard.recentTasks")}
               </h3>
               {recentIssues.length === 0 ? (
                 <div className="border border-border p-4">
-                  <p className="text-sm text-muted-foreground">No tasks yet.</p>
+                  <p className="text-sm text-muted-foreground">{t("dashboard.noTasks")}</p>
                 </div>
               ) : (
                 <div className="border border-border divide-y divide-border overflow-hidden">

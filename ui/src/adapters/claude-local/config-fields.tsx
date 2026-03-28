@@ -8,12 +8,12 @@ import {
 } from "../../components/agent-config-primitives";
 import { ChoosePathButton } from "../../components/PathInstructionsModal";
 import { LocalWorkspaceRuntimeFields } from "../local-workspace-runtime-fields";
+import { t } from "@/i18n";
 
 const inputClass =
   "w-full rounded-md border border-border px-2.5 py-1.5 bg-transparent outline-none text-sm font-mono placeholder:text-muted-foreground/40";
 
-const instructionsFileHint =
-  "Absolute path to a markdown file (e.g. AGENTS.md) that defines this agent's behavior. Injected into the system prompt at runtime.";
+const instructionsFileHint = t("agentConfig.instructionsFileHelp");
 
 export function ClaudeLocalConfigFields({
   mode,
@@ -30,7 +30,7 @@ export function ClaudeLocalConfigFields({
   return (
     <>
       {!hideInstructionsFile && (
-        <Field label="Agent instructions file" hint={instructionsFileHint}>
+        <Field label={t("agentConfig.instructionsFile")} hint={instructionsFileHint}>
           <div className="flex items-center gap-2">
             <DraftInput
               value={
@@ -49,7 +49,7 @@ export function ClaudeLocalConfigFields({
               }
               immediate
               className={inputClass}
-              placeholder="/absolute/path/to/AGENTS.md"
+              placeholder={t("agentConfig.instructionsFilePlaceholder")}
             />
             <ChoosePathButton />
           </div>
@@ -81,7 +81,7 @@ export function ClaudeLocalAdvancedFields({
   return (
     <>
       <ToggleField
-        label="Enable Chrome"
+        label={t("agentConfig.enableChrome")}
         hint={help.chrome}
         checked={
           isCreate
@@ -95,7 +95,7 @@ export function ClaudeLocalAdvancedFields({
         }
       />
       <ToggleField
-        label="Skip permissions"
+        label={t("agentConfig.skipPermissions")}
         hint={help.dangerouslySkipPermissions}
         checked={
           isCreate
@@ -112,7 +112,7 @@ export function ClaudeLocalAdvancedFields({
             : mark("adapterConfig", "dangerouslySkipPermissions", v)
         }
       />
-      <Field label="Max turns per run" hint={help.maxTurnsPerRun}>
+      <Field label={t("agentConfig.maxTurnsPerRun")} hint={help.maxTurnsPerRun}>
         {isCreate ? (
           <input
             type="number"

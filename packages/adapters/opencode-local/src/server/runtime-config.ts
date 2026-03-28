@@ -9,6 +9,24 @@ type PreparedOpenCodeRuntimeConfig = {
   cleanup: () => Promise<void>;
 };
 
+const AMBIENT_OPENCODE_ENV_KEYS = [
+  "OPENCODE",
+  "OPENCODE_PID",
+  "OPENCODE_CLIENT",
+  "OPENCODE_SERVER_USERNAME",
+  "OPENCODE_SERVER_PASSWORD",
+  "OPENCODE_EXPERIMENTAL_FILEWATCHER",
+  "OPENCODE_EXPERIMENTAL_ICON_DISCOVERY",
+] as const;
+
+export function sanitizeOpenCodeAmbientEnv(env: Record<string, string>): Record<string, string> {
+  const next = { ...env };
+  for (const key of AMBIENT_OPENCODE_ENV_KEYS) {
+    delete next[key];
+  }
+  return next;
+}
+
 function resolveXdgConfigHome(env: Record<string, string>): string {
   return (
     (typeof env.XDG_CONFIG_HOME === "string" && env.XDG_CONFIG_HOME.trim()) ||

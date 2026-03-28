@@ -13,9 +13,9 @@ import {
   ensurePathInEnv,
   runChildProcess,
 } from "@paperclipai/adapter-utils/server-utils";
-import { discoverOpenCodeModels, ensureOpenCodeModelConfiguredAndAvailable } from "./models.js";
+import { discoverOpenCodeModels, ensureOpenCodeModelConfiguredAndAvailable, resolveOpenCodeCommand } from "./models.js";
 import { parseOpenCodeJsonl } from "./parse.js";
-import { prepareOpenCodeRuntimeConfig } from "./runtime-config.js";
+import { prepareOpenCodeRuntimeConfig, sanitizeOpenCodeAmbientEnv } from "./runtime-config.js";
 
 function summarizeStatus(checks: AdapterEnvironmentCheck[]): AdapterEnvironmentTestResult["status"] {
   if (checks.some((check) => check.level === "error")) return "fail";
@@ -57,7 +57,7 @@ export async function testEnvironment(
 ): Promise<AdapterEnvironmentTestResult> {
   const checks: AdapterEnvironmentCheck[] = [];
   const config = parseObject(ctx.config);
-  const command = asString(config.command, "opencode");
+  const command = resolveOpenCodeCommand(config.command);
   const cwd = asString(config.cwd, process.cwd());
 
   try {
@@ -103,7 +103,9 @@ export async function testEnvironment(
     });
   }
   try {
-    const runtimeEnv = normalizeEnv(ensurePathInEnv({ ...process.env, ...preparedRuntimeConfig.env }));
+    const runtimeEnv = sanitizeOpenCodeAmbientEnv(
+      normalizeEnv(ensurePathInEnv({ ...process.env, ...preparedRuntimeConfig.env })),
+    );
 
     const cwdInvalid = checks.some((check) => check.code === "opencode_cwd_invalid");
     if (cwdInvalid) {

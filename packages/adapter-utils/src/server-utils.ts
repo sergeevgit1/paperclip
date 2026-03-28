@@ -750,6 +750,22 @@ export async function runChildProcess(
       delete rawMerged[key];
     }
 
+    // Strip ambient OpenCode desktop/session variables so spawned `opencode`
+    // subprocesses start a fresh local run instead of trying to attach to an
+    // unrelated desktop-managed session.
+    const OPENCODE_NESTING_VARS = [
+      "OPENCODE",
+      "OPENCODE_PID",
+      "OPENCODE_CLIENT",
+      "OPENCODE_SERVER_USERNAME",
+      "OPENCODE_SERVER_PASSWORD",
+      "OPENCODE_EXPERIMENTAL_FILEWATCHER",
+      "OPENCODE_EXPERIMENTAL_ICON_DISCOVERY",
+    ] as const;
+    for (const key of OPENCODE_NESTING_VARS) {
+      delete rawMerged[key];
+    }
+
     const mergedEnv = ensurePathInEnv(rawMerged);
     void resolveSpawnTarget(command, args, opts.cwd, mergedEnv)
       .then((target) => {

@@ -6,11 +6,12 @@ import {
   ensurePathInEnv,
   runChildProcess,
 } from "@paperclipai/adapter-utils/server-utils";
+import { sanitizeOpenCodeAmbientEnv } from "./runtime-config.js";
 
 const MODELS_CACHE_TTL_MS = 60_000;
 const MODELS_DISCOVERY_TIMEOUT_MS = 20_000;
 
-function resolveOpenCodeCommand(input: unknown): string {
+export function resolveOpenCodeCommand(input: unknown): string {
   const envOverride =
     typeof process.env.PAPERCLIP_OPENCODE_COMMAND === "string" &&
     process.env.PAPERCLIP_OPENCODE_COMMAND.trim().length > 0
@@ -121,7 +122,16 @@ export async function discoverOpenCodeModels(input: {
     // image). Fall back to process.env.HOME.
   }
   // Prevent OpenCode from writing an opencode.json into the working directory.
-  const runtimeEnv = normalizeEnv(ensurePathInEnv({ ...process.env, ...env, ...(resolvedHome ? { HOME: resolvedHome } : {}), OPENCODE_DISABLE_PROJECT_CONFIG: "true" }));
+  const runtimeEnv = sanitizeOpenCodeAmbientEnv(
+    normalizeEnv(
+      ensurePathInEnv({
+        ...process.env,
+        ...env,
+        ...(resolvedHome ? { HOME: resolvedHome } : {}),
+        OPENCODE_DISABLE_PROJECT_CONFIG: "true",
+      }),
+    ),
+  );
 
   const result = await runChildProcess(
     `opencode-models-${Date.now()}-${Math.random().toString(16).slice(2)}`,

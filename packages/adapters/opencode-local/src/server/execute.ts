@@ -21,9 +21,9 @@ import {
   resolvePaperclipDesiredSkillNames,
 } from "@paperclipai/adapter-utils/server-utils";
 import { isOpenCodeUnknownSessionError, parseOpenCodeJsonl } from "./parse.js";
-import { ensureOpenCodeModelConfiguredAndAvailable } from "./models.js";
+import { ensureOpenCodeModelConfiguredAndAvailable, resolveOpenCodeCommand } from "./models.js";
 import { removeMaintainerOnlySkillSymlinks } from "@paperclipai/adapter-utils/server-utils";
-import { prepareOpenCodeRuntimeConfig } from "./runtime-config.js";
+import { prepareOpenCodeRuntimeConfig, sanitizeOpenCodeAmbientEnv } from "./runtime-config.js";
 
 const __moduleDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -96,7 +96,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     config.promptTemplate,
     "You are agent {{agent.id}} ({{agent.name}}). Continue your Paperclip work.",
   );
-  const command = asString(config.command, "opencode");
+  const command = resolveOpenCodeCommand(config.command);
   const model = asString(config.model, "").trim();
   const variant = asString(config.variant, "").trim();
 
@@ -180,9 +180,11 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   }
   const preparedRuntimeConfig = await prepareOpenCodeRuntimeConfig({ env, config });
   try {
-    const runtimeEnv = Object.fromEntries(
-      Object.entries(ensurePathInEnv({ ...process.env, ...preparedRuntimeConfig.env })).filter(
-        (entry): entry is [string, string] => typeof entry[1] === "string",
+    const runtimeEnv = sanitizeOpenCodeAmbientEnv(
+      Object.fromEntries(
+        Object.entries(ensurePathInEnv({ ...process.env, ...preparedRuntimeConfig.env })).filter(
+          (entry): entry is [string, string] => typeof entry[1] === "string",
+        ),
       ),
     );
     await ensureCommandResolvable(command, cwd, runtimeEnv);

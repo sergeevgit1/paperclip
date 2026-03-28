@@ -50,6 +50,18 @@ function parseEnvBindings(bindings: unknown): Record<string, unknown> {
   return env;
 }
 
+function parseJsonObject(text: string): Record<string, unknown> | null {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
+    return parsed as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
 export function buildOpenCodeLocalConfig(v: CreateConfigValues): Record<string, unknown> {
   const ac: Record<string, unknown> = {};
   if (v.cwd) ac.cwd = v.cwd;
@@ -71,6 +83,21 @@ export function buildOpenCodeLocalConfig(v: CreateConfigValues): Record<string, 
     }
   }
   if (Object.keys(env).length > 0) ac.env = env;
+  if (v.openCodeCustomProviderEnabled) {
+    const providerId = v.openCodeCustomProviderId?.trim() ?? "";
+    const providerName = v.openCodeCustomProviderName?.trim() ?? "";
+    const providerBaseUrl = v.openCodeCustomProviderBaseUrl?.trim() ?? "";
+    const providerApiKey = v.openCodeCustomProviderApiKey?.trim() ?? "";
+    const providerHeaders = parseJsonObject(v.openCodeCustomProviderHeadersJson ?? "");
+    ac.openCodeProvider = {
+      enabled: true,
+      ...(providerId ? { id: providerId } : {}),
+      ...(providerName ? { name: providerName } : {}),
+      ...(providerBaseUrl ? { baseURL: providerBaseUrl } : {}),
+      ...(providerApiKey ? { apiKey: providerApiKey } : {}),
+      ...(providerHeaders ? { headers: providerHeaders } : {}),
+    };
+  }
   if (v.command) ac.command = v.command;
   if (v.extraArgs) ac.extraArgs = parseCommaArgs(v.extraArgs);
   return ac;

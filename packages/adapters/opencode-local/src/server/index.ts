@@ -64,6 +64,18 @@ export { execute } from "./execute.js";
 export { listOpenCodeSkills, syncOpenCodeSkills } from "./skills.js";
 export { testEnvironment } from "./test.js";
 export {
+  getManagedOpenCodeStatus,
+  installManagedOpenCode,
+  resolveManagedOpenCodeCommand,
+  resolveManagedOpenCodePrefix,
+} from "./managed-runtime.js";
+export {
+  registerOpenCodeCustomProvider,
+  discoverOpenAiCompatibleModels,
+  buildOpenCodeCustomProviderEntry,
+  resolveOpenCodeSourceConfigPath,
+} from "./provider-config.js";
+export {
   listOpenCodeModels,
   discoverOpenCodeModels,
   ensureOpenCodeModelConfiguredAndAvailable,

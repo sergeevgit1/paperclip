@@ -182,6 +182,13 @@ export function deduplicateAgentName(
   return `${candidateName} ${Date.now()}`;
 }
 
+function isConstraintViolation(error: unknown, constraint: string): boolean {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { code?: string; constraint?: string; constraint_name?: string };
+  const name = candidate.constraint ?? candidate.constraint_name;
+  return candidate.code === "23505" && name === constraint;
+}
+
 export function agentService(db: Db) {
   function currentUtcMonthWindow(now = new Date()) {
     const year = now.getUTCFullYear();
@@ -254,6 +261,9 @@ export function agentService(db: Db) {
     if (!manager) throw notFound("Manager not found");
     if (manager.companyId !== companyId) {
       throw unprocessable("Manager must belong to same company");
+    }
+    if (manager.status === "terminated") {
+      throw unprocessable("Manager must be active");
     }
     return manager;
   }
@@ -385,22 +395,31 @@ export function agentService(db: Db) {
       if (data.reportsTo) {
         await ensureManager(companyId, data.reportsTo);
       }
-
-      const existingAgents = await db
-        .select({ id: agents.id, name: agents.name, status: agents.status })
-        .from(agents)
-        .where(eq(agents.companyId, companyId));
-      const uniqueName = deduplicateAgentName(data.name, existingAgents);
-
       const role = data.role ?? "general";
       const normalizedPermissions = normalizeAgentPermissions(data.permissions, role);
-      const created = await db
-        .insert(agents)
-        .values({ ...data, name: uniqueName, companyId, role, permissions: normalizedPermissions })
-        .returning()
-        .then((rows) => rows[0]);
 
-      return normalizeAgentRow(created);
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const existingAgents = await db
+          .select({ id: agents.id, name: agents.name, status: agents.status })
+          .from(agents)
+          .where(eq(agents.companyId, companyId));
+        const uniqueName = deduplicateAgentName(data.name, existingAgents);
+
+        try {
+          const created = await db
+            .insert(agents)
+            .values({ ...data, name: uniqueName, companyId, role, permissions: normalizedPermissions })
+            .returning()
+            .then((rows) => rows[0]);
+          return normalizeAgentRow(created);
+        } catch (error) {
+          if (!isConstraintViolation(error, "agents_company_name_active_idx") || attempt === 2) {
+            throw error;
+          }
+        }
+      }
+
+      throw conflict("Unable to allocate unique agent name");
     },
 
     update: updateAgent,

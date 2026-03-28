@@ -8,6 +8,8 @@ const mockAgentService = vi.hoisted(() => ({
   getById: vi.fn(),
   update: vi.fn(),
   create: vi.fn(),
+  remove: vi.fn(),
+  terminate: vi.fn(),
   resolveByReference: vi.fn(),
 }));
 
@@ -23,7 +25,9 @@ const mockAccessService = vi.hoisted(() => ({
 const mockApprovalService = vi.hoisted(() => ({
   create: vi.fn(),
 }));
-const mockBudgetService = vi.hoisted(() => ({}));
+const mockBudgetService = vi.hoisted(() => ({
+  upsertPolicy: vi.fn(),
+}));
 const mockHeartbeatService = vi.hoisted(() => ({}));
 const mockIssueApprovalService = vi.hoisted(() => ({
   linkManyForApproval: vi.fn(),
@@ -182,6 +186,8 @@ describe("agent skill routes", () => {
       budgetMonthlyCents: Number(input.budgetMonthlyCents ?? 0),
       permissions: null,
     }));
+    mockAgentService.remove.mockResolvedValue(null);
+    mockAgentService.terminate.mockResolvedValue(null);
     mockApprovalService.create.mockImplementation(async (_companyId: string, input: Record<string, unknown>) => ({
       id: "approval-1",
       companyId: "company-1",
@@ -209,6 +215,7 @@ describe("agent skill routes", () => {
     mockAccessService.listPrincipalGrants.mockResolvedValue([]);
     mockAccessService.ensureMembership.mockResolvedValue(undefined);
     mockAccessService.setPrincipalPermission.mockResolvedValue(undefined);
+    mockBudgetService.upsertPolicy.mockResolvedValue(undefined);
   });
 
   it("skips runtime materialization when listing Claude skills", async () => {
@@ -458,5 +465,61 @@ describe("agent skill routes", () => {
       | { payload?: { adapterConfig?: Record<string, unknown> } }
       | undefined;
     expect(approvalInput?.payload?.adapterConfig?.promptTemplate).toBeUndefined();
+  });
+
+  it("creates budget policy for non-approval hires", async () => {
+    const res = await request(createApp(createDb(false)))
+      .post("/api/companies/company-1/agent-hires")
+      .send({
+        name: "Budgeted Agent",
+        role: "engineer",
+        adapterType: "process",
+        budgetMonthlyCents: 250,
+        adapterConfig: {},
+      });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(mockBudgetService.upsertPolicy).toHaveBeenCalledWith(
+      "company-1",
+      {
+        scopeType: "agent",
+        scopeId: "11111111-1111-4111-8111-111111111111",
+        amount: 250,
+        windowKind: "calendar_month_utc",
+      },
+      "local-board",
+    );
+  });
+
+  it("rolls back newly created hire when approval creation fails", async () => {
+    mockApprovalService.create.mockRejectedValueOnce(new Error("approval failed"));
+
+    const res = await request(createApp(createDb(true)))
+      .post("/api/companies/company-1/agent-hires")
+      .send({
+        name: "QA Agent",
+        role: "engineer",
+        adapterType: "claude_local",
+        adapterConfig: {},
+      });
+
+    expect(res.status).toBe(500);
+    expect(mockAgentService.remove).toHaveBeenCalledWith("11111111-1111-4111-8111-111111111111");
+  });
+
+  it("rolls back direct create when default grants fail", async () => {
+    mockAccessService.ensureMembership.mockRejectedValueOnce(new Error("grant failed"));
+
+    const res = await request(createApp())
+      .post("/api/companies/company-1/agents")
+      .send({
+        name: "QA Agent",
+        role: "engineer",
+        adapterType: "claude_local",
+        adapterConfig: {},
+      });
+
+    expect(res.status).toBe(500);
+    expect(mockAgentService.remove).toHaveBeenCalledWith("11111111-1111-4111-8111-111111111111");
   });
 });

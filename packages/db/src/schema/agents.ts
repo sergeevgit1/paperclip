@@ -7,7 +7,9 @@ import {
   timestamp,
   jsonb,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { companies } from "./companies.js";
 
 export const agents = pgTable(
@@ -38,5 +40,8 @@ export const agents = pgTable(
   (table) => ({
     companyStatusIdx: index("agents_company_status_idx").on(table.companyId, table.status),
     companyReportsToIdx: index("agents_company_reports_to_idx").on(table.companyId, table.reportsTo),
+    companyNameActiveUniqueIdx: uniqueIndex("agents_company_name_active_idx")
+      .on(table.companyId, table.name)
+      .where(sql`${table.status} <> 'terminated'`),
   }),
 );

@@ -27,6 +27,14 @@ export interface AdapterModel {
   label: string;
 }
 
+export interface OpenCodeProviderRegistrationResult {
+  providerId: string;
+  providerName: string;
+  baseURL: string;
+  models: AdapterModel[];
+  configPath: string;
+}
+
 export interface ClaudeLoginResult {
   exitCode: number | null;
   signal: string | null;
@@ -158,6 +166,20 @@ export const agentsApi = {
   adapterModels: (companyId: string, type: string) =>
     api.get<AdapterModel[]>(
       `/companies/${encodeURIComponent(companyId)}/adapters/${encodeURIComponent(type)}/models`,
+    ),
+  registerOpenCodeProvider: (
+    companyId: string,
+    data: {
+      providerId: string;
+      providerName?: string;
+      baseURL: string;
+      apiKey: string;
+      headers?: Record<string, string>;
+    },
+  ) =>
+    api.post<OpenCodeProviderRegistrationResult>(
+      `/companies/${encodeURIComponent(companyId)}/adapters/opencode_local/providers/register`,
+      data,
     ),
   testEnvironment: (
     companyId: string,

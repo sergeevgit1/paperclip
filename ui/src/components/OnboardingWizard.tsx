@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AdapterEnvironmentTestResult } from "@paperclipai/shared";
 import { useLocation, useNavigate, useParams } from "@/lib/router";
 import { useDialog } from "../context/DialogContext";
@@ -7,6 +7,7 @@ import { useCompany } from "../context/CompanyContext";
 import { companiesApi } from "../api/companies";
 import { goalsApi } from "../api/goals";
 import { agentsApi } from "../api/agents";
+import { instanceSettingsApi } from "../api/instanceSettings";
 import { issuesApi } from "../api/issues";
 import { projectsApi } from "../api/projects";
 import { queryKeys } from "../lib/queryKeys";
@@ -114,6 +115,12 @@ export function OnboardingWizard() {
   const [command, setCommand] = useState("");
   const [args, setArgs] = useState("");
   const [url, setUrl] = useState("");
+  const [openCodeCustomProviderEnabled, setOpenCodeCustomProviderEnabled] = useState(false);
+  const [openCodeCustomProviderId, setOpenCodeCustomProviderId] = useState("");
+  const [openCodeCustomProviderName, setOpenCodeCustomProviderName] = useState("");
+  const [openCodeCustomProviderBaseUrl, setOpenCodeCustomProviderBaseUrl] = useState("");
+  const [openCodeCustomProviderApiKey, setOpenCodeCustomProviderApiKey] = useState("");
+  const [openCodeCustomProviderHeadersJson, setOpenCodeCustomProviderHeadersJson] = useState("");
   const [adapterEnvResult, setAdapterEnvResult] =
     useState<AdapterEnvironmentTestResult | null>(null);
   const [adapterEnvError, setAdapterEnvError] = useState<string | null>(null);
@@ -200,6 +207,69 @@ export function OnboardingWizard() {
       : ["agents", "none", "adapter-models", adapterType],
     queryFn: () => agentsApi.adapterModels(createdCompanyId!, adapterType),
     enabled: Boolean(createdCompanyId) && effectiveOnboardingOpen && step === 2
+  });
+  const openCodeRuntimeStatus = useQuery({
+    queryKey: ["instance", "runtime", "opencode"],
+    queryFn: () => instanceSettingsApi.getOpenCodeRuntimeStatus(),
+    enabled: effectiveOnboardingOpen && step === 2 && adapterType === "opencode_local"
+  });
+  const installOpenCodeRuntime = useMutation({
+    mutationFn: () => instanceSettingsApi.installOpenCodeRuntime(),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["instance", "runtime", "opencode"] }),
+        createdCompanyId
+          ? queryClient.invalidateQueries({ queryKey: queryKeys.agents.adapterModels(createdCompanyId, adapterType) })
+          : Promise.resolve(),
+      ]);
+      setAdapterEnvError(null);
+      setError(null);
+    },
+    onError: (err) => {
+      setAdapterEnvError(err instanceof Error ? err.message : "Failed to install OpenCode.");
+    },
+  });
+  const registerOpenCodeProvider = useMutation({
+    mutationFn: async () => {
+      if (!createdCompanyId) throw new Error("Create or select a company first.");
+      if (!openCodeCustomProviderEnabled) throw new Error("Enable custom provider first.");
+      const providerId = openCodeCustomProviderId.trim();
+      const baseURL = openCodeCustomProviderBaseUrl.trim();
+      const apiKey = openCodeCustomProviderApiKey.trim();
+      if (!providerId) throw new Error("Provider ID is required.");
+      if (!baseURL) throw new Error("Base URL is required.");
+      if (!apiKey) throw new Error("API key is required.");
+      let headers: Record<string, string> = {};
+      if (openCodeCustomProviderHeadersJson.trim()) {
+        const parsed = JSON.parse(openCodeCustomProviderHeadersJson);
+        if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+          throw new Error("Extra headers must be a JSON object.");
+        }
+        headers = Object.fromEntries(
+          Object.entries(parsed).filter((entry): entry is [string, string] => typeof entry[1] === "string")
+        );
+      }
+      return agentsApi.registerOpenCodeProvider(createdCompanyId, {
+        providerId,
+        providerName: openCodeCustomProviderName.trim() || undefined,
+        baseURL,
+        apiKey,
+        headers,
+      });
+    },
+    onSuccess: async (result) => {
+      if (createdCompanyId) {
+        await queryClient.invalidateQueries({ queryKey: queryKeys.agents.adapterModels(createdCompanyId, adapterType) });
+      }
+      setAdapterEnvError(null);
+      setError(null);
+      if (result.models.length > 0) {
+        setModel(`${result.providerId}/${result.models[0]!.id}`);
+      }
+    },
+    onError: (err) => {
+      setAdapterEnvError(err instanceof Error ? err.message : "Failed to register provider.");
+    },
   });
   const isLocalAdapter =
     adapterType === "claude_local" ||
@@ -295,6 +365,12 @@ export function OnboardingWizard() {
     setCommand("");
     setArgs("");
     setUrl("");
+    setOpenCodeCustomProviderEnabled(false);
+    setOpenCodeCustomProviderId("");
+    setOpenCodeCustomProviderName("");
+    setOpenCodeCustomProviderBaseUrl("");
+    setOpenCodeCustomProviderApiKey("");
+    setOpenCodeCustomProviderHeadersJson("");
     setAdapterEnvResult(null);
     setAdapterEnvError(null);
     setAdapterEnvLoading(false);
@@ -331,6 +407,12 @@ export function OnboardingWizard() {
       command,
       args,
       url,
+      openCodeCustomProviderEnabled,
+      openCodeCustomProviderId,
+      openCodeCustomProviderName,
+      openCodeCustomProviderBaseUrl,
+      openCodeCustomProviderApiKey,
+      openCodeCustomProviderHeadersJson,
       dangerouslySkipPermissions:
         adapterType === "claude_local" || adapterType === "opencode_local",
       dangerouslyBypassSandbox:
@@ -904,6 +986,95 @@ export function OnboardingWizard() {
                     adapterType === "pi_local" ||
                     adapterType === "cursor") && (
                     <div className="space-y-3">
+                      {adapterType === "opencode_local" && (
+                        <div className="space-y-3 rounded-md border border-border/70 bg-accent/10 p-3">
+                          <label className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                            <span>Custom OpenAI-compatible provider</span>
+                            <button
+                              type="button"
+                              data-slot="toggle"
+                              className={cn(
+                                "relative inline-flex h-5 w-9 items-center rounded-full transition-colors",
+                                openCodeCustomProviderEnabled ? "bg-green-600" : "bg-muted"
+                              )}
+                              onClick={() => setOpenCodeCustomProviderEnabled((v) => !v)}
+                            >
+                              <span
+                                className={cn(
+                                  "inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform",
+                                  openCodeCustomProviderEnabled ? "translate-x-4.5" : "translate-x-0.5"
+                                )}
+                              />
+                            </button>
+                          </label>
+                          {openCodeCustomProviderEnabled && (
+                            <div className="space-y-3">
+                              <div>
+                                <label className="text-xs text-muted-foreground mb-1 block">Provider ID</label>
+                                <input
+                                  className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm font-mono outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
+                                  placeholder="myprovider"
+                                  value={openCodeCustomProviderId}
+                                  onChange={(e) => setOpenCodeCustomProviderId(e.target.value)}
+                                />
+                              </div>
+                              <div>
+                                <label className="text-xs text-muted-foreground mb-1 block">Provider name</label>
+                                <input
+                                  className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
+                                  placeholder="My Provider"
+                                  value={openCodeCustomProviderName}
+                                  onChange={(e) => setOpenCodeCustomProviderName(e.target.value)}
+                                />
+                              </div>
+                              <div>
+                                <label className="text-xs text-muted-foreground mb-1 block">Base URL</label>
+                                <input
+                                  className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm font-mono outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
+                                  placeholder="https://api.example.com/v1"
+                                  value={openCodeCustomProviderBaseUrl}
+                                  onChange={(e) => setOpenCodeCustomProviderBaseUrl(e.target.value)}
+                                />
+                              </div>
+                              <div>
+                                <label className="text-xs text-muted-foreground mb-1 block">API key</label>
+                                <input
+                                  className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm font-mono outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
+                                  placeholder="sk-..."
+                                  value={openCodeCustomProviderApiKey}
+                                  onChange={(e) => setOpenCodeCustomProviderApiKey(e.target.value)}
+                                />
+                              </div>
+                              <div>
+                                <label className="text-xs text-muted-foreground mb-1 block">Extra headers JSON</label>
+                                <textarea
+                                  className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm font-mono outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50 min-h-[88px]"
+                                  placeholder='{"Helicone-User-Id": "paperclip"}'
+                                  value={openCodeCustomProviderHeadersJson}
+                                  onChange={(e) => setOpenCodeCustomProviderHeadersJson(e.target.value)}
+                                />
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 px-2.5 text-xs"
+                                  onClick={() => void registerOpenCodeProvider.mutateAsync()}
+                                  disabled={registerOpenCodeProvider.isPending || !createdCompanyId}
+                                >
+                                  {registerOpenCodeProvider.isPending ? "Registering..." : "Register provider"}
+                                </Button>
+                                {registerOpenCodeProvider.data && (
+                                  <span className="text-[11px] text-muted-foreground">
+                                    Registered `{registerOpenCodeProvider.data.providerId}` and discovered {registerOpenCodeProvider.data.models.length} model{registerOpenCodeProvider.data.models.length === 1 ? "" : "s"}.
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
                       <div>
                         <label className="text-xs text-muted-foreground mb-1 block">
                           {t("onboarding.agent.model")}
@@ -1005,6 +1176,28 @@ export function OnboardingWizard() {
                             <div className="space-y-1">
                               <p className="font-medium">{t("onboarding.error.opencodeCommandMissing")}</p>
                               <p>{t("onboarding.error.opencodeCommandMissingHelp")}</p>
+                              {openCodeRuntimeStatus.data?.installed && (
+                                <p>
+                                  Managed OpenCode runtime is installed at `{openCodeRuntimeStatus.data.command}`.
+                                </p>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-7 px-2.5 text-xs"
+                                onClick={() => void installOpenCodeRuntime.mutateAsync()}
+                                disabled={installOpenCodeRuntime.isPending}
+                              >
+                                {installOpenCodeRuntime.isPending ? "Installing OpenCode..." : "Install OpenCode"}
+                              </Button>
+                              {openCodeRuntimeStatus.data?.version && (
+                                <span className="text-[10px] text-muted-foreground">
+                                  {openCodeRuntimeStatus.data.version}
+                                </span>
+                              )}
                             </div>
                             <Button
                               type="button"

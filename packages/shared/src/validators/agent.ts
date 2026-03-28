@@ -44,7 +44,7 @@ const adapterConfigSchema = z.record(z.unknown()).superRefine((value, ctx) => {
 });
 
 export const createAgentSchema = z.object({
-  name: z.string().min(1),
+  name: z.string().trim().min(1).max(120),
   role: z.enum(AGENT_ROLES).optional().default("general"),
   title: z.string().optional().nullable(),
   icon: z.enum(AGENT_ICON_NAMES).optional().nullable(),
@@ -118,6 +118,16 @@ export const testAdapterEnvironmentSchema = z.object({
 });
 
 export type TestAdapterEnvironment = z.infer<typeof testAdapterEnvironmentSchema>;
+
+export const registerOpenCodeProviderSchema = z.object({
+  providerId: z.string().min(1),
+  providerName: z.string().optional(),
+  baseURL: z.string().url(),
+  apiKey: z.string().min(1),
+  headers: z.record(z.string()).optional().default({}),
+});
+
+export type RegisterOpenCodeProvider = z.infer<typeof registerOpenCodeProviderSchema>;
 
 export const updateAgentPermissionsSchema = z.object({
   canCreateAgents: z.boolean(),

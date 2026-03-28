@@ -336,6 +336,12 @@ export interface CreateConfigValues {
   extraArgs: string;
   envVars: string;
   envBindings: Record<string, unknown>;
+  openCodeCustomProviderEnabled?: boolean;
+  openCodeCustomProviderId?: string;
+  openCodeCustomProviderName?: string;
+  openCodeCustomProviderBaseUrl?: string;
+  openCodeCustomProviderApiKey?: string;
+  openCodeCustomProviderHeadersJson?: string;
   url: string;
   bootstrapPrompt: string;
   payloadTemplateJson?: string;

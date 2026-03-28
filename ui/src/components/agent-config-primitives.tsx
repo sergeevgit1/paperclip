@@ -45,6 +45,7 @@ export const help: Record<string, string> = {
   args: "Command-line arguments, comma-separated.",
   extraArgs: t("agentConfig.help.extraArgs"),
   envVars: t("agentConfig.help.envVars"),
+  openCodeCustomProvider: "Register a custom OpenAI-compatible provider directly into the OpenCode config used by Paperclip.",
   bootstrapPrompt: t("agentConfig.help.bootstrapPrompt"),
   payloadTemplateJson: "Optional JSON merged into remote adapter request payloads before Paperclip adds its standard wake and workspace fields.",
   webhookUrl: "The URL that receives POST requests when the agent is invoked.",

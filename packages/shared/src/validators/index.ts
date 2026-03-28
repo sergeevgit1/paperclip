@@ -88,6 +88,7 @@ export {
   wakeAgentSchema,
   resetAgentSessionSchema,
   testAdapterEnvironmentSchema,
+  registerOpenCodeProviderSchema,
   agentPermissionsSchema,
   updateAgentPermissionsSchema,
   type CreateAgent,
@@ -100,6 +101,7 @@ export {
   type WakeAgent,
   type ResetAgentSession,
   type TestAdapterEnvironment,
+  type RegisterOpenCodeProvider,
   type UpdateAgentPermissions,
 } from "./agent.js";
 

@@ -7,17 +7,23 @@ import {
   runChildProcess,
 } from "@paperclipai/adapter-utils/server-utils";
 import { sanitizeOpenCodeAmbientEnv } from "./runtime-config.js";
+import { getManagedOpenCodeStatus } from "./managed-runtime.js";
 
 const MODELS_CACHE_TTL_MS = 60_000;
 const MODELS_DISCOVERY_TIMEOUT_MS = 20_000;
 
 export function resolveOpenCodeCommand(input: unknown): string {
+  if (typeof input === "string" && input.trim().length > 0) {
+    return input.trim();
+  }
+  const managedCommand = process.env.PAPERCLIP_OPENCODE_MANAGED_COMMAND?.trim();
+  if (managedCommand) return managedCommand;
   const envOverride =
     typeof process.env.PAPERCLIP_OPENCODE_COMMAND === "string" &&
     process.env.PAPERCLIP_OPENCODE_COMMAND.trim().length > 0
       ? process.env.PAPERCLIP_OPENCODE_COMMAND.trim()
       : "opencode";
-  return asString(input, envOverride);
+  return envOverride;
 }
 
 const discoveryCache = new Map<string, { expiresAt: number; models: AdapterModel[] }>();
@@ -209,6 +215,10 @@ export async function ensureOpenCodeModelConfiguredAndAvailable(input: {
 
 export async function listOpenCodeModels(): Promise<AdapterModel[]> {
   try {
+    const managed = await getManagedOpenCodeStatus();
+    if (managed.installed) {
+      process.env.PAPERCLIP_OPENCODE_MANAGED_COMMAND = managed.command;
+    }
     return await discoverOpenCodeModelsCached();
   } catch {
     return [];

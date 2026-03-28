@@ -28,6 +28,8 @@ import { cn } from "../lib/utils";
 import { extractModelName, extractProviderId } from "../lib/model-utils";
 import { queryKeys } from "../lib/queryKeys";
 import { useCompany } from "../context/CompanyContext";
+import { useToast } from "../context/ToastContext";
+import { instanceSettingsApi } from "../api/instanceSettings";
 import {
   Field,
   ToggleField,
@@ -177,6 +179,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
   const showCreateRunPolicySection = props.showCreateRunPolicySection ?? true;
   const hideInstructionsFile = props.hideInstructionsFile ?? false;
   const { selectedCompanyId } = useCompany();
+  const { pushToast } = useToast();
   const queryClient = useQueryClient();
 
   const { data: availableSecrets = [] } = useQuery({
@@ -303,6 +306,31 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
   const showLegacyWorkingDirectoryField =
     isLocal && shouldShowLegacyWorkingDirectoryField({ isCreate, adapterConfig: config });
   const uiAdapter = useMemo(() => getUIAdapter(adapterType), [adapterType]);
+  const val = isCreate ? props.values : null;
+  const set = isCreate
+    ? (patch: Partial<CreateConfigValues>) => props.onChange(patch)
+    : null;
+  const buildAdapterConfigForTest = useCallback((): Record<string, unknown> => {
+    if (isCreate) {
+      return uiAdapter.buildAdapterConfig(val!);
+    }
+    const base = config as Record<string, unknown>;
+    return { ...base, ...overlay.adapterConfig };
+  }, [config, isCreate, overlay.adapterConfig, uiAdapter, val]);
+
+  const currentAdapterConfigForTest = buildAdapterConfigForTest();
+  const currentOpenCodeProviderConfig =
+    adapterType === "opencode_local" &&
+    typeof currentAdapterConfigForTest.openCodeProvider === "object" &&
+    currentAdapterConfigForTest.openCodeProvider !== null &&
+    !Array.isArray(currentAdapterConfigForTest.openCodeProvider)
+      ? (currentAdapterConfigForTest.openCodeProvider as Record<string, unknown>)
+      : null;
+  const openCodeRuntimeStatus = useQuery({
+    queryKey: ["instance", "runtime", "opencode"],
+    queryFn: () => instanceSettingsApi.getOpenCodeRuntimeStatus(),
+    enabled: adapterType === "opencode_local",
+  });
 
   // Fetch adapter models for the effective adapter type
   const {
@@ -316,6 +344,76 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
     enabled: Boolean(selectedCompanyId),
   });
   const models = fetchedModels ?? externalModels ?? [];
+
+  const registerOpenCodeProvider = useMutation({
+    mutationFn: async () => {
+      if (!selectedCompanyId) throw new Error("Select a company first.");
+      if (adapterType !== "opencode_local") throw new Error("Custom OpenCode providers are only supported for OpenCode.");
+      const provider = currentOpenCodeProviderConfig;
+      if (!provider || provider.enabled !== true) {
+        throw new Error("Enable Custom OpenAI-compatible provider first.");
+      }
+      const providerId = typeof provider.id === "string" ? provider.id.trim() : "";
+      const baseURL = typeof provider.baseURL === "string" ? provider.baseURL.trim() : "";
+      const apiKey = typeof provider.apiKey === "string" ? provider.apiKey.trim() : "";
+      if (!providerId) throw new Error("Provider ID is required.");
+      if (!baseURL) throw new Error("Base URL is required.");
+      if (!apiKey) throw new Error("API key is required.");
+      const headers =
+        typeof provider.headers === "object" && provider.headers !== null && !Array.isArray(provider.headers)
+          ? Object.fromEntries(
+              Object.entries(provider.headers as Record<string, unknown>).filter(
+                (entry): entry is [string, string] => typeof entry[1] === "string",
+              ),
+            )
+          : {};
+      return agentsApi.registerOpenCodeProvider(selectedCompanyId, {
+        providerId,
+        providerName: typeof provider.name === "string" && provider.name.trim().length > 0 ? provider.name.trim() : undefined,
+        baseURL,
+        apiKey,
+        headers,
+      });
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({
+        queryKey: selectedCompanyId
+          ? queryKeys.agents.adapterModels(selectedCompanyId, adapterType)
+          : ["agents", "none", "adapter-models", adapterType],
+      });
+      pushToast({
+        title: `Registered OpenCode provider ${result.providerId}`,
+        body: `Discovered ${result.models.length} model${result.models.length === 1 ? "" : "s"}.`,
+        tone: "success",
+      });
+      if (isCreate && result.models.length > 0) {
+        const firstModel = `${result.providerId}/${result.models[0]!.id}`;
+        set!({ model: firstModel });
+      }
+    },
+    onError: (err: Error) => {
+      pushToast({ title: "Failed to register OpenCode provider", body: err.message, tone: "error" });
+    },
+  });
+  const installOpenCodeRuntime = useMutation({
+    mutationFn: () => instanceSettingsApi.installOpenCodeRuntime(),
+    onSuccess: async (result) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["instance", "runtime", "opencode"] }),
+        selectedCompanyId
+          ? queryClient.invalidateQueries({ queryKey: queryKeys.agents.adapterModels(selectedCompanyId, adapterType) })
+          : Promise.resolve(),
+      ]);
+      pushToast({
+        title: "Installed OpenCode",
+        body: result.version ? `Ready at ${result.command} (${result.version}).` : `Ready at ${result.command}.`,
+        tone: "success",
+      });
+    },
+    onError: (err: Error) => {
+      pushToast({ title: "Failed to install OpenCode", body: err.message, tone: "error" });
+    },
+  });
 
   const { data: companyAgents = [] } = useQuery({
     queryKey: selectedCompanyId ? queryKeys.agents.list(selectedCompanyId) : ["agents", "none", "list"],
@@ -342,20 +440,6 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
   // Popover states
   const [modelOpen, setModelOpen] = useState(false);
   const [thinkingEffortOpen, setThinkingEffortOpen] = useState(false);
-
-  // Create mode helpers
-  const val = isCreate ? props.values : null;
-  const set = isCreate
-    ? (patch: Partial<CreateConfigValues>) => props.onChange(patch)
-    : null;
-
-  function buildAdapterConfigForTest(): Record<string, unknown> {
-    if (isCreate) {
-      return uiAdapter.buildAdapterConfig(val!);
-    }
-    const base = config as Record<string, unknown>;
-    return { ...base, ...overlay.adapterConfig };
-  }
 
   const testEnvironment = useMutation({
     mutationFn: async () => {
@@ -658,6 +742,39 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
 
           {/* Adapter-specific fields */}
           <uiAdapter.ConfigFields {...adapterFieldProps} />
+          {adapterType === "opencode_local" && currentOpenCodeProviderConfig?.enabled === true && (
+            <div className="rounded-md border border-border/70 bg-accent/20 px-3 py-3 space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-medium">Register provider in OpenCode</div>
+                  <p className="text-xs text-muted-foreground">
+                    Writes the provider into the OpenCode config Paperclip uses, discovers models from `/models`, and makes them available in the model picker.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => registerOpenCodeProvider.mutate()}
+                  disabled={registerOpenCodeProvider.isPending || !selectedCompanyId}
+                >
+                  {registerOpenCodeProvider.isPending ? "Registering..." : "Register provider"}
+                </Button>
+              </div>
+              {registerOpenCodeProvider.isError && (
+                <p className="text-xs text-destructive">
+                  {registerOpenCodeProvider.error instanceof Error
+                    ? registerOpenCodeProvider.error.message
+                    : "Failed to register provider."}
+                </p>
+              )}
+              {registerOpenCodeProvider.data && (
+                <p className="text-xs text-muted-foreground">
+                  Registered `{registerOpenCodeProvider.data.providerId}` into `{registerOpenCodeProvider.data.configPath}` and discovered {registerOpenCodeProvider.data.models.length} model{registerOpenCodeProvider.data.models.length === 1 ? "" : "s"}.
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
       </div>
@@ -720,6 +837,24 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                     ? fetchedModelsError.message
                     : t("agentConfig.failedLoadModels")}
                 </p>
+              )}
+              {adapterType === "opencode_local" && fetchedModelsError instanceof Error && /command not found in path|command is not executable/i.test(fetchedModelsError.message) && (
+                <div className="rounded-md border border-amber-300/60 bg-amber-50/40 px-3 py-2 text-xs text-amber-900/90 space-y-2">
+                  <p>OpenCode is not available on this Paperclip instance yet.</p>
+                  {openCodeRuntimeStatus.data?.installed && (
+                    <p className="text-[11px] text-muted-foreground">Managed runtime: `{openCodeRuntimeStatus.data.command}`</p>
+                  )}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 px-2.5 text-xs"
+                    onClick={() => installOpenCodeRuntime.mutate()}
+                    disabled={installOpenCodeRuntime.isPending}
+                  >
+                    {installOpenCodeRuntime.isPending ? "Installing OpenCode..." : "Install OpenCode"}
+                  </Button>
+                </div>
               )}
 
               {showThinkingEffort && (

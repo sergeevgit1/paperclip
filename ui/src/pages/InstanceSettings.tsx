@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Clock3, ExternalLink, Settings } from "lucide-react";
+import { Activity, Clock3, ExternalLink, Settings } from "lucide-react";
 import type { InstanceSchedulerHeartbeatAgent } from "@paperclipai/shared";
 import { Link } from "@/lib/router";
 import { heartbeatsApi } from "../api/heartbeats";
@@ -9,7 +9,7 @@ import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { EmptyState } from "../components/EmptyState";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { queryKeys } from "../lib/queryKeys";
 import { formatDateTime, relativeTime } from "../lib/utils";
 import { useI18n } from "@/i18n";
@@ -166,21 +166,52 @@ export function InstanceSettings() {
   }
 
   return (
-    <div className="max-w-5xl space-y-6">
-      <div className="space-y-2">
-        <div className="flex items-center gap-2">
-          <Settings className="h-5 w-5 text-muted-foreground" />
-          <h1 className="text-lg font-semibold">{t("instance.title")}</h1>
-        </div>
-        <p className="text-sm text-muted-foreground">
-          {t("instance.subtitle")}
-        </p>
+    <div className="w-full space-y-6 pb-6">
+      <Card className="border-border/80 bg-card/70 py-0">
+        <CardHeader className="px-5 py-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <Settings className="h-5 w-5 text-muted-foreground" />
+                <CardTitle className="text-base">{t("instance.title")}</CardTitle>
+              </div>
+              <p className="text-sm text-muted-foreground">{t("instance.subtitle")}</p>
+            </div>
+            <Badge variant="outline" className="mt-0.5">
+              Scheduler
+            </Badge>
+          </div>
+        </CardHeader>
+      </Card>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Card className="py-0">
+          <CardContent className="px-4 py-3">
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">{t("instance.active")}</div>
+            <div className="mt-1 flex items-center gap-2 text-lg font-semibold">
+              <Activity className="h-4 w-4 text-emerald-500" />
+              {activeCount}
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="py-0">
+          <CardContent className="px-4 py-3">
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">{t("instance.disabled")}</div>
+            <div className="mt-1 text-lg font-semibold">{disabledCount}</div>
+          </CardContent>
+        </Card>
+        <Card className="py-0">
+          <CardContent className="px-4 py-3">
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">Companies</div>
+            <div className="mt-1 text-lg font-semibold">{grouped.length}</div>
+          </CardContent>
+        </Card>
       </div>
 
-      <div className="flex items-center gap-4 text-sm text-muted-foreground">
-        <span><span className="font-semibold text-foreground">{activeCount}</span> {t("instance.active")}</span>
-        <span><span className="font-semibold text-foreground">{disabledCount}</span> {t("instance.disabled")}</span>
-        <span><span className="font-semibold text-foreground">{grouped.length}</span> {t("instance.companyCount", { count: grouped.length })}</span>
+      <div className="flex items-center gap-3 text-sm text-muted-foreground">
+        <span>
+          <span className="font-semibold text-foreground">{enabledCount}</span> timer heartbeats enabled
+        </span>
         {anyEnabled && (
           <Button
             variant="destructive"
@@ -214,10 +245,10 @@ export function InstanceSettings() {
       ) : (
         <div className="space-y-4">
           {grouped.map((group) => (
-            <Card key={group.companyName}>
+            <Card key={group.companyName} className="py-0">
               <CardContent className="p-0">
-                <div className="border-b px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  {group.companyName}
+                <div className="border-b bg-muted/20 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  {group.companyName} · {group.agents.length}
                 </div>
                 <div className="divide-y">
                   {group.agents.map((agent) => {
@@ -225,7 +256,7 @@ export function InstanceSettings() {
                     return (
                       <div
                         key={agent.id}
-                        className="flex items-center gap-3 px-3 py-2 text-sm"
+                        className="flex items-center gap-3 px-3 py-2.5 text-sm"
                       >
                         <Badge
                           variant={agent.schedulerActive ? "default" : "outline"}

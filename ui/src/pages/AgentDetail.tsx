@@ -803,10 +803,18 @@ export function AgentDetail() {
     return <Navigate to={`/agents/${canonicalAgentRef}/dashboard`} replace />;
   }
   const isPendingApproval = agent.status === "pending_approval";
-  const showConfigActionBar = (activeView === "configuration" || activeView === "instructions") && (configDirty || configSaving);
+  const showConfigActionBar = activeView === "configuration" && (configDirty || configSaving);
+  const tabItems: { value: string; label: string }[] = [
+    { value: "dashboard", label: t("agentDetail.dashboard") },
+    { value: "instructions", label: t("agentDetail.instructions") },
+    { value: "skills", label: t("agentDetail.skills") },
+    { value: "configuration", label: t("agentDetail.configuration") },
+    { value: "runs", label: t("agentDetail.runs") },
+    { value: "budget", label: t("agentDetail.budget") },
+  ];
 
   return (
-    <div className={cn("space-y-6", isMobile && showConfigActionBar && "pb-24")}>
+    <div className={cn(isMobile ? "space-y-4" : "space-y-2", isMobile && showConfigActionBar && "pb-24")}>
       {/* Header */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-3 min-w-0">
@@ -826,25 +834,46 @@ export function AgentDetail() {
             </p>
           </div>
         </div>
+        {!isMobile && !urlRunId && (
+          <div className="min-w-0 flex-1 px-4">
+            <div className="mx-auto w-full max-w-4xl">
+              <Tabs
+                value={activeView}
+                onValueChange={(value) => navigate(`/agents/${canonicalAgentRef}/${value}`)}
+              >
+                <PageTabBar
+                  items={tabItems}
+                  value={activeView}
+                  onValueChange={(value) => navigate(`/agents/${canonicalAgentRef}/${value}`)}
+                />
+              </Tabs>
+            </div>
+          </div>
+        )}
         <div className="flex items-center gap-1 sm:gap-2 shrink-0">
           <Button
             variant="outline"
-            size="sm"
+            size="icon-sm"
             onClick={() => openNewIssue({ assigneeAgentId: agent.id })}
+            aria-label={t("agentDetail.assignTask")}
+            title={t("agentDetail.assignTask")}
           >
-            <Plus className="h-3.5 w-3.5 sm:mr-1" />
-          <span className="hidden sm:inline">{t("agentDetail.assignTask")}</span>
+            <Plus className="h-3.5 w-3.5" />
           </Button>
           <RunButton
             onClick={() => agentAction.mutate("invoke")}
             disabled={agentAction.isPending || isPendingApproval}
             label={t("agentDetail.runHeartbeat")}
+            size="icon-sm"
+            iconOnly
           />
           <PauseResumeButton
             isPaused={agent.status === "paused"}
             onPause={() => agentAction.mutate("pause")}
             onResume={() => agentAction.mutate("resume")}
             disabled={agentAction.isPending || isPendingApproval}
+            size="icon-sm"
+            iconOnly
           />
           <span className="hidden sm:inline"><StatusBadge status={agent.status} /></span>
           {mobileLiveRun && (
@@ -903,20 +932,13 @@ export function AgentDetail() {
         </div>
       </div>
 
-      {!urlRunId && (
+      {isMobile && !urlRunId && (
         <Tabs
           value={activeView}
           onValueChange={(value) => navigate(`/agents/${canonicalAgentRef}/${value}`)}
         >
           <PageTabBar
-            items={[
-              { value: "dashboard", label: t("agentDetail.dashboard") },
-              { value: "instructions", label: t("agentDetail.instructions") },
-              { value: "skills", label: t("agentDetail.skills") },
-              { value: "configuration", label: t("agentDetail.configuration") },
-              { value: "runs", label: t("agentDetail.runs") },
-              { value: "budget", label: t("agentDetail.budget") },
-            ]}
+            items={tabItems}
             value={activeView}
             onValueChange={(value) => navigate(`/agents/${canonicalAgentRef}/${value}`)}
           />
@@ -987,69 +1009,71 @@ export function AgentDetail() {
       )}
 
       {/* View content */}
-      {activeView === "dashboard" && (
-        <AgentOverview
-          agent={agent}
-          runs={heartbeats ?? []}
-          assignedIssues={assignedIssues}
-          runtimeState={runtimeState}
-          agentId={agent.id}
-          agentRouteId={canonicalAgentRef}
-        />
-      )}
-
-      {activeView === "instructions" && (
-        <PromptsTab
-          agent={agent}
-          companyId={resolvedCompanyId ?? undefined}
-          onDirtyChange={setConfigDirty}
-          onSaveActionChange={setSaveConfigAction}
-          onCancelActionChange={setCancelConfigAction}
-          onSavingChange={setConfigSaving}
-        />
-      )}
-
-      {activeView === "configuration" && (
-        <AgentConfigurePage
-          agent={agent}
-          agentId={agent.id}
-          companyId={resolvedCompanyId ?? undefined}
-          onDirtyChange={setConfigDirty}
-          onSaveActionChange={setSaveConfigAction}
-          onCancelActionChange={setCancelConfigAction}
-          onSavingChange={setConfigSaving}
-          updatePermissions={updatePermissions}
-        />
-      )}
-
-      {activeView === "skills" && (
-        <AgentSkillsTab
-          agent={agent}
-          companyId={resolvedCompanyId ?? undefined}
-        />
-      )}
-
-      {activeView === "runs" && (
-        <RunsTab
-          runs={heartbeats ?? []}
-          companyId={resolvedCompanyId!}
-          agentId={agent.id}
-          agentRouteId={canonicalAgentRef}
-          selectedRunId={urlRunId ?? null}
-          adapterType={agent.adapterType}
-        />
-      )}
-
-      {activeView === "budget" && resolvedCompanyId ? (
-        <div className="max-w-3xl">
-          <BudgetPolicyCard
-            summary={agentBudgetSummary}
-            isSaving={budgetMutation.isPending}
-            onSave={(amount) => budgetMutation.mutate(amount)}
-            variant="plain"
+      <div>
+        {activeView === "dashboard" && (
+          <AgentOverview
+            agent={agent}
+            runs={heartbeats ?? []}
+            assignedIssues={assignedIssues}
+            runtimeState={runtimeState}
+            agentId={agent.id}
+            agentRouteId={canonicalAgentRef}
           />
-        </div>
-      ) : null}
+        )}
+
+        {activeView === "instructions" && (
+          <PromptsTab
+            agent={agent}
+            companyId={resolvedCompanyId ?? undefined}
+            onDirtyChange={setConfigDirty}
+            onSaveActionChange={setSaveConfigAction}
+            onCancelActionChange={setCancelConfigAction}
+            onSavingChange={setConfigSaving}
+          />
+        )}
+
+        {activeView === "configuration" && (
+          <AgentConfigurePage
+            agent={agent}
+            agentId={agent.id}
+            companyId={resolvedCompanyId ?? undefined}
+            onDirtyChange={setConfigDirty}
+            onSaveActionChange={setSaveConfigAction}
+            onCancelActionChange={setCancelConfigAction}
+            onSavingChange={setConfigSaving}
+            updatePermissions={updatePermissions}
+          />
+        )}
+
+        {activeView === "skills" && (
+          <AgentSkillsTab
+            agent={agent}
+            companyId={resolvedCompanyId ?? undefined}
+          />
+        )}
+
+        {activeView === "runs" && (
+          <RunsTab
+            runs={heartbeats ?? []}
+            companyId={resolvedCompanyId!}
+            agentId={agent.id}
+            agentRouteId={canonicalAgentRef}
+            selectedRunId={urlRunId ?? null}
+            adapterType={agent.adapterType}
+          />
+        )}
+
+        {activeView === "budget" && resolvedCompanyId ? (
+          <div className="w-full">
+            <BudgetPolicyCard
+              summary={agentBudgetSummary}
+              isSaving={budgetMutation.isPending}
+              onSave={(amount) => budgetMutation.mutate(amount)}
+              variant="plain"
+            />
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -1331,7 +1355,7 @@ function AgentConfigurePage({
   });
 
   return (
-    <div className="max-w-3xl space-y-6">
+    <div className="w-full min-w-0 space-y-6">
       <ConfigurationTab
         agent={agent}
         onDirtyChange={onDirtyChange}
@@ -1814,56 +1838,58 @@ function PromptsTab({
   const isDirty = bundleDirty || fileDirty;
   const isSaving = updateBundle.isPending || saveFile.isPending || deleteFile.isPending || awaitingRefresh;
 
-  useEffect(() => { onSavingChange(isSaving); }, [onSavingChange, isSaving]);
-  useEffect(() => { onDirtyChange(isDirty); }, [onDirtyChange, isDirty]);
-
-  useEffect(() => {
-    onSaveActionChange(isDirty ? () => {
-      const save = async () => {
-        const shouldClearLegacy =
-          Boolean(bundle?.legacyPromptTemplateActive) || Boolean(bundle?.legacyBootstrapPromptTemplateActive);
-        if (bundleDirty && bundleDraft) {
-          await updateBundle.mutateAsync({
-            mode: bundleDraft.mode,
-            rootPath: bundleDraft.mode === "external" ? bundleDraft.rootPath : null,
-            entryFile: bundleDraft.entryFile,
-          });
-        }
-        if (fileDirty) {
-          await saveFile.mutateAsync({
-            path: selectedOrEntryFile,
-            content: displayValue,
-            clearLegacyPromptTemplate: shouldClearLegacy,
-          });
-        }
-      };
-      void save().catch(() => undefined);
-    } : null);
+  const handleSave = useCallback(() => {
+    const save = async () => {
+      const shouldClearLegacy =
+        Boolean(bundle?.legacyPromptTemplateActive) || Boolean(bundle?.legacyBootstrapPromptTemplateActive);
+      if (bundleDirty && bundleDraft) {
+        await updateBundle.mutateAsync({
+          mode: bundleDraft.mode,
+          rootPath: bundleDraft.mode === "external" ? bundleDraft.rootPath : null,
+          entryFile: bundleDraft.entryFile,
+        });
+      }
+      if (fileDirty) {
+        await saveFile.mutateAsync({
+          path: selectedOrEntryFile,
+          content: displayValue,
+          clearLegacyPromptTemplate: shouldClearLegacy,
+        });
+      }
+    };
+    void save().catch(() => undefined);
   }, [
     bundle,
     bundleDirty,
     bundleDraft,
     displayValue,
     fileDirty,
-    isDirty,
-    onSaveActionChange,
     saveFile,
     selectedOrEntryFile,
     updateBundle,
   ]);
 
+  const handleCancel = useCallback(() => {
+    setDraft(null);
+    if (bundle) {
+      setBundleDraft({
+        mode: persistedMode,
+        rootPath: persistedRootPath,
+        entryFile: bundle.entryFile,
+      });
+    }
+  }, [bundle, persistedMode, persistedRootPath]);
+
+  useEffect(() => { onSavingChange(isSaving); }, [onSavingChange, isSaving]);
+  useEffect(() => { onDirtyChange(isDirty); }, [onDirtyChange, isDirty]);
+
   useEffect(() => {
-    onCancelActionChange(isDirty ? () => {
-      setDraft(null);
-      if (bundle) {
-        setBundleDraft({
-          mode: persistedMode,
-          rootPath: persistedRootPath,
-          entryFile: bundle.entryFile,
-        });
-      }
-    } : null);
-  }, [bundle, isDirty, onCancelActionChange, persistedMode, persistedRootPath]);
+    onSaveActionChange(isDirty ? handleSave : null);
+  }, [handleSave, isDirty, onSaveActionChange]);
+
+  useEffect(() => {
+    onCancelActionChange(isDirty ? handleCancel : null);
+  }, [handleCancel, isDirty, onCancelActionChange]);
 
   const handleSeparatorDrag = useCallback((event: React.MouseEvent) => {
     event.preventDefault();
@@ -1888,7 +1914,7 @@ function PromptsTab({
 
   if (!isLocal) {
     return (
-      <div className="max-w-3xl">
+      <div className="w-full">
         <p className="text-sm text-muted-foreground">
           {t("agentDetail.instructionsLocalOnly")}
         </p>
@@ -1901,7 +1927,7 @@ function PromptsTab({
   }
 
   return (
-    <div className="max-w-6xl space-y-6">
+    <div className="w-full space-y-6">
       {(bundle?.warnings ?? []).length > 0 && (
         <div className="space-y-2">
           {(bundle?.warnings ?? []).map((warning) => (
@@ -2065,7 +2091,7 @@ function PromptsTab({
         </CollapsibleContent>
       </Collapsible>
 
-      <div ref={containerRef} className={cn("flex gap-0", isMobile && "flex-col gap-3")}>
+      <div ref={containerRef} className={cn("flex w-full min-w-0 gap-0", isMobile && "flex-col gap-3")}>
         <div className={cn(
           "border border-border rounded-lg p-3 space-y-3 shrink-0",
           isMobile && showFilePanel && "block",
@@ -2224,26 +2250,49 @@ function PromptsTab({
                 </p>
               </div>
             </div>
-            {selectedFileExists && !selectedFileSummary?.deprecated && selectedOrEntryFile !== currentEntryFile && (
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => {
+            <div className="flex items-center gap-2">
+              {isDirty && (
+                <>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={handleCancel}
+                    disabled={isSaving}
+                  >
+                    {t("agentDetail.cancel")}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleSave}
+                    disabled={isSaving}
+                  >
+                    {isSaving ? t("agentDetail.saving") : t("agentDetail.save")}
+                  </Button>
+                </>
+              )}
+              {selectedFileExists && !selectedFileSummary?.deprecated && selectedOrEntryFile !== currentEntryFile && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
                     if (confirm(`${t("agentDetail.delete")} ${selectedOrEntryFile}?`)) {
-                    deleteFile.mutate(selectedOrEntryFile, {
-                      onSuccess: () => {
-                        setSelectedFile(currentEntryFile);
-                        setDraft(null);
-                      },
-                    });
-                  }
-                }}
-                disabled={deleteFile.isPending}
-              >
-                {t("agentDetail.delete")}
-              </Button>
-            )}
+                      deleteFile.mutate(selectedOrEntryFile, {
+                        onSuccess: () => {
+                          setSelectedFile(currentEntryFile);
+                          setDraft(null);
+                        },
+                      });
+                    }
+                  }}
+                  disabled={deleteFile.isPending}
+                >
+                  {t("agentDetail.delete")}
+                </Button>
+              )}
+            </div>
           </div>
 
           {selectedFileExists && fileLoading && !selectedFileDetail ? (
@@ -2278,12 +2327,12 @@ function PromptsTab({
 
 function PromptsTabSkeleton() {
   return (
-    <div className="max-w-5xl space-y-4">
+    <div className="w-full space-y-4">
       <div className="rounded-lg border border-border p-4 space-y-4">
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-2">
             <Skeleton className="h-4 w-40" />
-            <Skeleton className="h-4 w-[30rem] max-w-full" />
+            <Skeleton className="h-4 w-full" />
           </div>
           <Skeleton className="h-4 w-16" />
         </div>
@@ -2525,7 +2574,7 @@ function AgentSkillsTab({
       : null;
 
   return (
-    <div className="max-w-4xl space-y-5">
+    <div className="w-full space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Link
           to="/skills"
@@ -2839,11 +2888,11 @@ function RunsTab({
 
   // Desktop: side-by-side layout
   return (
-    <div className="flex gap-0">
+    <div className="flex w-full min-w-0 gap-0">
       {/* Left: run list — border stretches full height, content sticks */}
       <div className={cn(
-        "shrink-0 border border-border rounded-lg",
-        selectedRun ? "w-72" : "w-full",
+        "border border-border rounded-lg",
+        selectedRun ? "w-72 shrink-0" : "w-full min-w-0",
       )}>
         <div className="sticky top-4 overflow-y-auto" style={{ maxHeight: "calc(100vh - 2rem)" }}>
         {sorted.map((run) => (

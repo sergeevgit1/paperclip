@@ -8,7 +8,9 @@ import { accessApi } from "../api/access";
 import { assetsApi } from "../api/assets";
 import { queryKeys } from "../lib/queryKeys";
 import { Button } from "@/components/ui/button";
-import { Settings, Check, Download, Upload } from "lucide-react";
+import { Settings, Check, Download, Upload, Brush, Building2, ShieldCheck, UserPlus, Archive } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CompanyPatternIcon } from "../components/CompanyPatternIcon";
 import {
   Field,
@@ -221,18 +223,31 @@ export function CompanySettings() {
   }
 
   return (
-    <div className="max-w-2xl space-y-6">
-      <div className="flex items-center gap-2">
-        <Settings className="h-5 w-5 text-muted-foreground" />
-        <h1 className="text-lg font-semibold">Company Settings</h1>
-      </div>
+    <div className="w-full space-y-6 pb-6">
+      <Card className="border-border/80 bg-card/70 py-0">
+        <CardHeader className="px-5 py-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <Settings className="h-5 w-5 text-muted-foreground" />
+                <CardTitle className="text-base">Company Settings</CardTitle>
+              </div>
+              <p className="text-sm text-muted-foreground">Manage company identity, hiring controls, invites, and packaging flows.</p>
+            </div>
+            <Badge variant="outline" className="mt-0.5">{selectedCompany.name}</Badge>
+          </div>
+        </CardHeader>
+      </Card>
 
+      <div className="grid gap-6 xl:grid-cols-2">
       {/* General */}
       <div className="space-y-4">
-        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+        <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          <Building2 className="h-3.5 w-3.5" />
           General
         </div>
-        <div className="space-y-3 rounded-md border border-border px-4 py-4">
+        <Card className="py-0">
+          <CardContent className="space-y-3 px-4 py-4">
           <Field label="Company name" hint="The display name for your company.">
             <input
               className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
@@ -253,15 +268,18 @@ export function CompanySettings() {
               onChange={(e) => setDescription(e.target.value)}
             />
           </Field>
-        </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Appearance */}
       <div className="space-y-4">
-        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+        <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          <Brush className="h-3.5 w-3.5" />
           Appearance
         </div>
-        <div className="space-y-3 rounded-md border border-border px-4 py-4">
+        <Card className="py-0">
+          <CardContent className="space-y-3 px-4 py-4">
           <div className="flex items-start gap-4">
             <div className="shrink-0">
               <CompanyPatternIcon
@@ -350,7 +368,8 @@ export function CompanySettings() {
               </Field>
             </div>
           </div>
-        </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Save button for General + Appearance */}
@@ -378,25 +397,30 @@ export function CompanySettings() {
 
       {/* Hiring */}
       <div className="space-y-4">
-        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+        <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          <ShieldCheck className="h-3.5 w-3.5" />
           Hiring
         </div>
-        <div className="rounded-md border border-border px-4 py-3">
+        <Card className="py-0">
+          <CardContent className="px-4 py-3">
           <ToggleField
             label="Require board approval for new hires"
             hint="New agent hires stay pending until approved by board."
             checked={!!selectedCompany.requireBoardApprovalForNewAgents}
             onChange={(v) => settingsMutation.mutate(v)}
           />
-        </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Invites */}
-      <div className="space-y-4">
-        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+      <div className="space-y-4 xl:col-span-2">
+        <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          <UserPlus className="h-3.5 w-3.5" />
           Invites
         </div>
-        <div className="space-y-3 rounded-md border border-border px-4 py-4">
+        <Card className="py-0">
+          <CardContent className="space-y-3 px-4 py-4">
           <div className="flex items-center gap-1.5">
             <span className="text-xs text-muted-foreground">
               Generate an OpenClaw agent invite snippet.
@@ -460,7 +484,8 @@ export function CompanySettings() {
               </div>
             </div>
           )}
-        </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Import / Export */}
@@ -468,7 +493,8 @@ export function CompanySettings() {
         <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
           Company Packages
         </div>
-        <div className="rounded-md border border-border px-4 py-4">
+        <Card className="py-0">
+          <CardContent className="px-4 py-4">
           <p className="text-sm text-muted-foreground">
             Import and export have moved to dedicated pages accessible from the{" "}
             <a href="/org" className="underline hover:text-foreground">Org Chart</a> header.
@@ -487,15 +513,18 @@ export function CompanySettings() {
               </a>
             </Button>
           </div>
-        </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Danger Zone */}
       <div className="space-y-4">
-        <div className="text-xs font-medium text-destructive uppercase tracking-wide">
+        <div className="flex items-center gap-2 text-xs font-medium text-destructive uppercase tracking-wide">
+          <Archive className="h-3.5 w-3.5" />
           Danger Zone
         </div>
-        <div className="space-y-3 rounded-md border border-destructive/40 bg-destructive/5 px-4 py-4">
+        <Card className="border-destructive/40 bg-destructive/5 py-0">
+          <CardContent className="space-y-3 px-4 py-4">
           <p className="text-sm text-muted-foreground">
             Archive this company to hide it from the sidebar. This persists in
             the database.
@@ -536,11 +565,13 @@ export function CompanySettings() {
               <span className="text-xs text-destructive">
                 {archiveMutation.error instanceof Error
                   ? archiveMutation.error.message
-                  : "Failed to archive company"}
+                : "Failed to archive company"}
               </span>
             )}
           </div>
-        </div>
+          </CardContent>
+        </Card>
+      </div>
       </div>
     </div>
   );

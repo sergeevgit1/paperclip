@@ -16,6 +16,13 @@ docker run --name paperclip \
 
 Open: `http://localhost:3100`
 
+First-run behavior in the default authenticated Docker quickstart:
+
+- the container starts through `paperclipai run --yes`
+- if `/paperclip/instances/default/config.json` does not exist yet, quickstart config is created automatically
+- after the server starts on embedded Postgres, Paperclip generates the first CEO bootstrap invite automatically
+- the invite URL is printed into `docker logs` / `docker compose logs`
+
 Data persistence:
 
 - Embedded PostgreSQL data

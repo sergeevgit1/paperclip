@@ -83,6 +83,8 @@ docker run --name paperclip \
   paperclip-local
 ```
 
+On the first container start in `authenticated` mode, the container now auto-runs `paperclipai run --yes`, which bootstraps config if needed, starts the server, and prints the first CEO bootstrap invite URL directly into the container logs.
+
 Or use Compose:
 
 ```sh

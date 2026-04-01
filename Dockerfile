@@ -78,4 +78,4 @@ VOLUME ["/paperclip"]
 EXPOSE 3100
 
 ENTRYPOINT ["docker-entrypoint.sh"]
-CMD ["pnpm", "paperclipai", "run", "--yes"]
+CMD ["node", "server/dist/index.js"]

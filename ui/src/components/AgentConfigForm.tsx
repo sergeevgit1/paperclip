@@ -1243,9 +1243,17 @@ function EnvVarEditor({
   const [rows, setRows] = useState<Row[]>(() => toRows(value));
   const [sealError, setSealError] = useState<string | null>(null);
   const valueRef = useRef(value);
+  const emittingRef = useRef(false);
 
-  // Sync when value identity changes (overlay reset after save)
+  // Sync when value identity changes (overlay reset after save).
+  // Skip re-sync when the change was triggered by our own emit() to avoid
+  // reverting local row state during source transitions.
   useEffect(() => {
+    if (emittingRef.current) {
+      emittingRef.current = false;
+      valueRef.current = value;
+      return;
+    }
     if (value !== valueRef.current) {
       valueRef.current = value;
       setRows(toRows(value));
@@ -1258,12 +1266,17 @@ function EnvVarEditor({
       const k = row.key.trim();
       if (!k) continue;
       if (row.source === "secret") {
-        if (!row.secretId) continue;
-        rec[k] = { type: "secret_ref", secretId: row.secretId, version: "latest" };
+        if (row.secretId) {
+          rec[k] = { type: "secret_ref", secretId: row.secretId, version: "latest" };
+        } else {
+          // Preserve the plain value while the row is transitioning to secret.
+          rec[k] = { type: "plain", value: row.plainValue };
+        }
       } else {
         rec[k] = { type: "plain", value: row.plainValue };
       }
     }
+    emittingRef.current = true;
     onChange(Object.keys(rec).length > 0 ? rec : undefined);
   }
 

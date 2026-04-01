@@ -125,6 +125,16 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     desiredOpenCodeSkillNames,
   );
 
+  const instructionsFilePath = asString(config.instructionsFilePath, "").trim();
+  const resolvedInstructionsFilePath = instructionsFilePath
+    ? path.resolve(cwd, instructionsFilePath)
+    : "";
+  const inferredAgentHome =
+    !agentHome && resolvedInstructionsFilePath
+      ? path.dirname(resolvedInstructionsFilePath)
+      : "";
+  const effectiveAgentHome = agentHome || inferredAgentHome;
+
   const envConfig = parseObject(config.env);
   const hasExplicitApiKey =
     typeof envConfig.PAPERCLIP_API_KEY === "string" && envConfig.PAPERCLIP_API_KEY.trim().length > 0;
@@ -164,7 +174,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   if (workspaceId) env.PAPERCLIP_WORKSPACE_ID = workspaceId;
   if (workspaceRepoUrl) env.PAPERCLIP_WORKSPACE_REPO_URL = workspaceRepoUrl;
   if (workspaceRepoRef) env.PAPERCLIP_WORKSPACE_REPO_REF = workspaceRepoRef;
-  if (agentHome) env.AGENT_HOME = agentHome;
+  if (effectiveAgentHome) env.AGENT_HOME = effectiveAgentHome;
   if (workspaceHints.length > 0) env.PAPERCLIP_WORKSPACES_JSON = JSON.stringify(workspaceHints);
 
   for (const [key, value] of Object.entries(envConfig)) {
@@ -192,6 +202,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     await ensureOpenCodeModelConfiguredAndAvailable({
       model,
       command,
+
       cwd,
       env: runtimeEnv,
     });

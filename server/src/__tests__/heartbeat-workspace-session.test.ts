@@ -6,10 +6,12 @@ import type { agents } from "@paperclipai/db";
 import { sessionCodec as codexSessionCodec } from "@paperclipai/adapter-codex-local/server";
 import { resolveDefaultAgentWorkspaceDir } from "../home-paths.js";
 import {
+  archiveStaleExecutionWorkspace,
   buildExplicitResumeSessionOverride,
   deriveTaskKeyWithHeartbeatFallback,
   ensureAgentWorkspaceBootstrapFromInstructions,
   formatRuntimeWorkspaceWarningLog,
+  isStaleExecutionWorkspaceReuseCandidate,
   prioritizeProjectWorkspaceCandidatesForRun,
   parseSessionCompactionPolicy,
   resolveRuntimeSessionParamsForWorkspace,
@@ -122,6 +124,94 @@ describe("resolveRuntimeSessionParamsForWorkspace", () => {
       workspaceId: "workspace-1",
     });
     expect(result.warning).toBeNull();
+  });
+});
+
+describe("isStaleExecutionWorkspaceReuseCandidate", () => {
+  it("treats runtime-created _default workspaces without project binding as stale once a real project workspace exists", () => {
+    expect(
+      isStaleExecutionWorkspaceReuseCandidate({
+        existingExecutionWorkspace: {
+          projectWorkspaceId: null,
+          cwd: "/paperclip/instances/default/projects/company/project/_default",
+          repoUrl: null,
+          metadata: { createdByRuntime: true },
+        },
+        issueProjectWorkspaceId: "workspace-1",
+        resolvedWorkspaceId: "workspace-1",
+        resolvedWorkspaceCwd: "/paperclip/instances/default/projects/company/project/gptsystem",
+        resolvedWorkspaceRepoUrl: "https://github.com/example/gptsystem.git",
+      }),
+    ).toBe(true);
+  });
+
+  it("does not mark concrete project workspaces as stale", () => {
+    expect(
+      isStaleExecutionWorkspaceReuseCandidate({
+        existingExecutionWorkspace: {
+          projectWorkspaceId: "workspace-1",
+          cwd: "/paperclip/instances/default/projects/company/project/gptsystem",
+          repoUrl: "https://github.com/example/gptsystem.git",
+          metadata: { createdByRuntime: true },
+        },
+        issueProjectWorkspaceId: "workspace-1",
+        resolvedWorkspaceId: "workspace-1",
+        resolvedWorkspaceCwd: "/paperclip/instances/default/projects/company/project/gptsystem",
+        resolvedWorkspaceRepoUrl: "https://github.com/example/gptsystem.git",
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("archiveStaleExecutionWorkspace", () => {
+  it("archives stale execution workspaces with a cleanup reason", async () => {
+    const updates: Array<{ id: string; patch: Record<string, unknown> }> = [];
+    const result = await archiveStaleExecutionWorkspace({
+      executionWorkspacesSvc: {
+        update: async (id: string, patch: Record<string, unknown>) => {
+          updates.push({ id, patch });
+          return { id, ...patch };
+        },
+      } as never,
+      staleExecutionWorkspace: {
+        id: "exec-1",
+        cwd: "/paperclip/instances/default/projects/company/project/_default",
+        status: "active",
+      },
+    });
+
+    expect(updates).toHaveLength(1);
+    expect(updates[0]?.id).toBe("exec-1");
+    expect(updates[0]?.patch).toMatchObject({
+      status: "archived",
+      cleanupReason: "stale_project_workspace_fallback",
+    });
+    expect(result).toMatchObject({
+      id: "exec-1",
+      status: "archived",
+      cleanupReason: "stale_project_workspace_fallback",
+    });
+  });
+
+  it("does nothing when workspace is already archived", async () => {
+    const result = await archiveStaleExecutionWorkspace({
+      executionWorkspacesSvc: {
+        update: async () => {
+          throw new Error("should not update archived workspace");
+        },
+      } as never,
+      staleExecutionWorkspace: {
+        id: "exec-1",
+        cwd: "/paperclip/instances/default/projects/company/project/_default",
+        status: "archived",
+      },
+    });
+
+    expect(result).toEqual({
+      id: "exec-1",
+      cwd: "/paperclip/instances/default/projects/company/project/_default",
+      status: "archived",
+    });
   });
 });
 

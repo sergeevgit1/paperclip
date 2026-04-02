@@ -532,6 +532,70 @@ function formatCount(value: number | null | undefined) {
   return value.toLocaleString("en-US");
 }
 
+export function isStaleExecutionWorkspaceReuseCandidate(input: {
+  existingExecutionWorkspace: {
+    projectWorkspaceId: string | null;
+    cwd: string | null;
+    repoUrl: string | null;
+    metadata: Record<string, unknown> | null;
+  } | null;
+  issueProjectWorkspaceId: string | null;
+  resolvedWorkspaceId: string | null;
+  resolvedWorkspaceCwd: string | null;
+  resolvedWorkspaceRepoUrl: string | null;
+}) {
+  const existing = input.existingExecutionWorkspace;
+  if (!existing) return false;
+
+  const existingCwd = readNonEmptyString(existing.cwd);
+  const existingRepoUrl = readNonEmptyString(existing.repoUrl);
+  const resolvedCwd = readNonEmptyString(input.resolvedWorkspaceCwd);
+  const resolvedRepoUrl = readNonEmptyString(input.resolvedWorkspaceRepoUrl);
+  const metadata = parseObject(existing.metadata);
+  const createdByRuntime = metadata.createdByRuntime === true;
+  const issueProjectWorkspaceId = readNonEmptyString(input.issueProjectWorkspaceId);
+  const resolvedWorkspaceId = readNonEmptyString(input.resolvedWorkspaceId);
+
+  const executionWorkspaceHasNoProjectBinding = !readNonEmptyString(existing.projectWorkspaceId);
+  const issueNowHasConcreteWorkspace = Boolean(issueProjectWorkspaceId || resolvedWorkspaceId);
+  const executionWorkspaceHasNoRepoBinding = !existingRepoUrl;
+  const resolvedWorkspaceHasRepoBinding = Boolean(resolvedRepoUrl);
+
+  const existingLooksLikeFallbackDefault =
+    existingCwd !== null &&
+    existingCwd.endsWith("/_default") &&
+    executionWorkspaceHasNoProjectBinding &&
+    executionWorkspaceHasNoRepoBinding;
+
+  const resolvedWorkspaceMoved =
+    existingCwd !== null && resolvedCwd !== null && path.resolve(existingCwd) !== path.resolve(resolvedCwd);
+
+  return (
+    existingLooksLikeFallbackDefault &&
+    createdByRuntime &&
+    (issueNowHasConcreteWorkspace || resolvedWorkspaceHasRepoBinding || resolvedWorkspaceMoved)
+  );
+}
+
+export async function archiveStaleExecutionWorkspace(input: {
+  executionWorkspacesSvc: ReturnType<typeof executionWorkspaceService>;
+  staleExecutionWorkspace: {
+    id: string;
+    cwd: string | null;
+    status: string;
+  } | null;
+}) {
+  const staleExecutionWorkspace = input.staleExecutionWorkspace;
+  if (!staleExecutionWorkspace) return null;
+  if (staleExecutionWorkspace.status === "archived") return staleExecutionWorkspace;
+  return input.executionWorkspacesSvc.update(staleExecutionWorkspace.id, {
+    status: "archived",
+    cleanupReason: "stale_project_workspace_fallback",
+    closedAt: new Date(),
+    cleanupEligibleAt: new Date(),
+  });
+}
+
 export function parseSessionCompactionPolicy(agent: typeof agents.$inferSelect): SessionCompactionPolicy {
   return resolveSessionCompactionPolicy(agent.adapterType, agent.runtimeConfig).policy;
 }
@@ -2264,10 +2328,18 @@ export function heartbeatService(db: Db) {
     });
     const resolvedProjectId = executionWorkspace.projectId ?? issueRef?.projectId ?? executionProjectId ?? null;
     const resolvedProjectWorkspaceId = issueRef?.projectWorkspaceId ?? resolvedWorkspace.workspaceId ?? null;
+    const staleExecutionWorkspaceReuse = isStaleExecutionWorkspaceReuseCandidate({
+      existingExecutionWorkspace,
+      issueProjectWorkspaceId: issueRef?.projectWorkspaceId ?? null,
+      resolvedWorkspaceId: resolvedProjectWorkspaceId,
+      resolvedWorkspaceCwd: executionWorkspace.cwd,
+      resolvedWorkspaceRepoUrl: executionWorkspace.repoUrl,
+    });
     const shouldReuseExisting =
       issueRef?.executionWorkspacePreference === "reuse_existing" &&
       existingExecutionWorkspace &&
-      existingExecutionWorkspace.status !== "archived";
+      existingExecutionWorkspace.status !== "archived" &&
+      !staleExecutionWorkspaceReuse;
     let persistedExecutionWorkspace = null;
     try {
       persistedExecutionWorkspace = shouldReuseExisting && existingExecutionWorkspace
@@ -2394,6 +2466,17 @@ export function heartbeatService(db: Db) {
         await issuesSvc.update(issueId, nextIssuePatch);
       }
     }
+    if (
+      staleExecutionWorkspaceReuse &&
+      existingExecutionWorkspace &&
+      persistedExecutionWorkspace &&
+      existingExecutionWorkspace.id !== persistedExecutionWorkspace.id
+    ) {
+      await archiveStaleExecutionWorkspace({
+        executionWorkspacesSvc,
+        staleExecutionWorkspace: existingExecutionWorkspace,
+      });
+    }
     if (persistedExecutionWorkspace) {
       context.executionWorkspaceId = persistedExecutionWorkspace.id;
       await db
@@ -2416,6 +2499,11 @@ export function heartbeatService(db: Db) {
     const runtimeWorkspaceWarnings = [
       ...resolvedWorkspace.warnings,
       ...executionWorkspace.warnings,
+      ...(staleExecutionWorkspaceReuse && existingExecutionWorkspace?.cwd
+        ? [
+            `Ignoring stale execution workspace "${existingExecutionWorkspace.cwd}" because a concrete project workspace is now available for this issue.`,
+          ]
+        : []),
       ...(runtimeSessionResolution.warning ? [runtimeSessionResolution.warning] : []),
       ...(resetTaskSession && sessionResetReason
         ? [

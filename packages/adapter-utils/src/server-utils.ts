@@ -208,6 +208,13 @@ export function buildPaperclipEnv(agent: { id: string; companyId: string }): Rec
     if (host.includes(":") && !host.startsWith("[") && !host.endsWith("]")) return `[${host}]`;
     return host;
   };
+  const copyAmbientIfPresent = (
+    vars: Record<string, string>,
+    key: "GH_TOKEN" | "GITHUB_TOKEN",
+  ) => {
+    const value = process.env[key]?.trim();
+    if (value) vars[key] = value;
+  };
   const vars: Record<string, string> = {
     PAPERCLIP_AGENT_ID: agent.id,
     PAPERCLIP_COMPANY_ID: agent.companyId,
@@ -218,6 +225,8 @@ export function buildPaperclipEnv(agent: { id: string; companyId: string }): Rec
   const runtimePort = process.env.PAPERCLIP_LISTEN_PORT ?? process.env.PORT ?? "3100";
   const apiUrl = process.env.PAPERCLIP_API_URL ?? `http://${runtimeHost}:${runtimePort}`;
   vars.PAPERCLIP_API_URL = apiUrl;
+  copyAmbientIfPresent(vars, "GH_TOKEN");
+  copyAmbientIfPresent(vars, "GITHUB_TOKEN");
   return vars;
 }
 

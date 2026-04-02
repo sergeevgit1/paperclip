@@ -136,6 +136,27 @@ For `codex_local`, Paperclip also manages a per-company Codex home under the ins
 
 - `~/.paperclip/instances/default/companies/<company-id>/codex-home`
 
+## Run Readiness Checks
+
+Before relying on a heartbeat run, validate agent instructions and project workspace readiness.
+
+Useful endpoints:
+
+```sh
+curl http://localhost:3100/api/projects/<project-id>/diagnostics
+curl http://localhost:3100/api/agents/<agent-id>/preflight
+curl http://localhost:3100/api/health
+```
+
+What these checks surface:
+
+- missing or incomplete managed instruction bundles
+- projects with no primary workspace
+- workspaces whose `cwd` is missing or empty
+- projects that do not currently look like a real code checkout
+
+This helps catch the most common local execution failures before they become heartbeat run errors.
+
 ## Worktree-local Instances
 
 When developing from multiple git worktrees, do not point two Paperclip servers at the same embedded PostgreSQL data directory.

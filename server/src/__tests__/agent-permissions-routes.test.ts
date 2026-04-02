@@ -16,7 +16,7 @@ const baseAgent = {
   title: "Builder",
   icon: null,
   status: "idle",
-  reportsTo: null,
+  reportsTo: "33333333-3333-4333-8333-333333333333",
   capabilities: null,
   adapterType: "process",
   adapterConfig: {},
@@ -190,6 +190,7 @@ describe("agent permission routes", () => {
       .send({
         name: "Builder",
         role: "engineer",
+        reportsTo: "33333333-3333-4333-8333-333333333333",
         adapterType: "process",
         adapterConfig: {},
       });

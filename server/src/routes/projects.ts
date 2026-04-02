@@ -70,6 +70,34 @@ export function projectRoutes(db: Db) {
     res.json(project);
   });
 
+  router.get("/projects/:id/diagnostics", async (req, res) => {
+    const id = req.params.id as string;
+    const project = await svc.getById(id);
+    if (!project) {
+      res.status(404).json({ error: "Project not found" });
+      return;
+    }
+    assertCompanyAccess(req, project.companyId);
+    const diagnostics = await svc.getDiagnostics(id);
+    if (!diagnostics) {
+      res.status(404).json({ error: "Project not found" });
+      return;
+    }
+    res.json(diagnostics);
+  });
+
+  router.get("/companies/:companyId/projects/:id", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    const id = req.params.id as string;
+    assertCompanyAccess(req, companyId);
+    const project = await svc.getById(id);
+    if (!project || project.companyId !== companyId) {
+      res.status(404).json({ error: "Project not found" });
+      return;
+    }
+    res.json(project);
+  });
+
   router.post("/companies/:companyId/projects", validate(createProjectSchema), async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);

@@ -236,6 +236,32 @@ export function createPluginJobScheduler(
   /** Guard against concurrent tick execution. */
   let tickInProgress = false;
 
+  /** Coalesce repeated infrastructure errors to reduce log storms. */
+  let lastTickErrorSignature: string | null = null;
+  let lastTickErrorAt = 0;
+  let repeatedTickErrorCount = 0;
+
+  function logTickError(err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    const now = Date.now();
+    if (lastTickErrorSignature === message && now - lastTickErrorAt < tickIntervalMs * 3) {
+      repeatedTickErrorCount += 1;
+      lastTickErrorAt = now;
+      if (repeatedTickErrorCount === 1 || repeatedTickErrorCount % 10 === 0) {
+        log.error(
+          { err: message, repeatedTickErrorCount },
+          "scheduler tick error (repeated)",
+        );
+      }
+      return;
+    }
+
+    lastTickErrorSignature = message;
+    lastTickErrorAt = now;
+    repeatedTickErrorCount = 0;
+    log.error({ err: message }, "scheduler tick error");
+  }
+
   // -----------------------------------------------------------------------
   // Core: tick
   // -----------------------------------------------------------------------
@@ -323,10 +349,7 @@ export function createPluginJobScheduler(
         await Promise.allSettled(dispatches);
       }
     } catch (err) {
-      log.error(
-        { err: err instanceof Error ? err.message : String(err) },
-        "scheduler tick error",
-      );
+      logTickError(err);
     } finally {
       tickInProgress = false;
     }

@@ -122,6 +122,8 @@ export type { FinanceEvent, FinanceSummary, FinanceByBiller, FinanceByKind } fro
 export type {
   HeartbeatRun,
   HeartbeatRunEvent,
+  ProjectDiagnostics,
+  ProjectDiagnosticsWorkspace,
   AgentRuntimeState,
   AgentTaskSession,
   AgentWakeupRequest,

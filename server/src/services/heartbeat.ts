@@ -52,6 +52,7 @@ import {
 } from "./execution-workspace-policy.js";
 import { instanceSettingsService } from "./instance-settings.js";
 import { redactCurrentUserText, redactCurrentUserValue } from "../log-redaction.js";
+import { runHeartbeatPreflight } from "./run-preflight.js";
 import {
   hasSessionCompactionThresholds,
   resolveSessionCompactionPolicy,
@@ -94,18 +95,20 @@ async function ensureDailyMemoryNote(rootDir: string, date = new Date()): Promis
   await fs.writeFile(notePath, `# ${currentDailyNoteFileName(date)}\n\n`, "utf8");
 }
 
-async function ensureAgentWorkspaceBootstrapFromInstructions(input: {
+export async function ensureAgentWorkspaceBootstrapFromInstructions(input: {
   companyId: string;
   agentId: string;
   workspaceDir: string;
 }): Promise<void> {
   const instructionsDir = path.resolve(
-    resolveManagedProjectWorkspaceDir({
-      companyId: input.companyId,
-      projectId: "..",
-      repoName: null,
-    }),
-    `../companies/${input.companyId}/agents/${input.agentId}/instructions`,
+    process.env.PAPERCLIP_HOME?.trim() || path.resolve(path.join(path.dirname(resolveDefaultAgentWorkspaceDir(input.agentId)), "..", "..")),
+    "instances",
+    process.env.PAPERCLIP_INSTANCE_ID?.trim() || "default",
+    "companies",
+    input.companyId,
+    "agents",
+    input.agentId,
+    "instructions",
   );
 
   await fs.mkdir(input.workspaceDir, { recursive: true });
@@ -2599,6 +2602,54 @@ export function heartbeatService(db: Db) {
       for (const warning of runtimeWorkspaceWarnings) {
         const logEntry = formatRuntimeWorkspaceWarningLog(warning);
         await onLog(logEntry.stream, logEntry.chunk);
+      }
+      const preflight = await runHeartbeatPreflight({
+        db,
+        agent,
+        context,
+        resolvedWorkspaceCwd: executionWorkspace.cwd,
+        resolvedWorkspaceSource: executionWorkspace.source,
+      });
+      context.paperclipPreflight = {
+        ok: preflight.ok,
+        checks: preflight.checks,
+      };
+      await db
+        .update(heartbeatRuns)
+        .set({
+          contextSnapshot: context,
+          updatedAt: new Date(),
+        })
+        .where(eq(heartbeatRuns.id, run.id));
+      for (const check of preflight.checks) {
+        await onLog(
+          check.severity === "error" ? "stderr" : "stdout",
+          `[paperclip][preflight][${check.severity}] ${check.message}${check.code ? ` (${check.code})` : ""}\n`,
+        );
+      }
+      if (!preflight.ok) {
+        let logSummary: { bytes: number; sha256?: string; compressed: boolean } | null = null;
+        if (handle) {
+          logSummary = await runLogStore.finalize(handle);
+          handle = null;
+        }
+        const firstError = preflight.checks.find((check) => check.severity === "error");
+        await setRunStatus(run.id, "failed", {
+          finishedAt: new Date(),
+          error: firstError?.message ?? "Run preflight failed",
+          errorCode: firstError?.code ?? "run_preflight_failed",
+          stdoutExcerpt,
+          stderrExcerpt,
+          logBytes: logSummary?.bytes,
+          logSha256: logSummary?.sha256,
+          logCompressed: logSummary?.compressed ?? false,
+          contextSnapshot: context,
+        });
+        await db
+          .update(agents)
+          .set({ status: "error", updatedAt: new Date() })
+          .where(eq(agents.id, agent.id));
+        return;
       }
       const adapterEnv = Object.fromEntries(
         Object.entries(parseObject(resolvedConfig.env)).filter(

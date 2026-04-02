@@ -65,6 +65,9 @@ type AgentInstructionsBundle = {
   files: AgentInstructionsFileSummary[];
 };
 
+const REQUIRED_BUNDLE_FILES = ["AGENTS.md", "HEARTBEAT.md"] as const;
+const RECOMMENDED_BUNDLE_FILES = ["SOUL.md", "TOOLS.md", "ROLE.md"] as const;
+
 type BundleState = {
   config: Record<string, unknown>;
   mode: BundleMode | null;
@@ -344,6 +347,18 @@ function toBundle(agent: AgentLike, state: BundleState, files: AgentInstructions
       virtual: true,
     });
   }
+  const filePaths = new Set(nextFiles.map((file) => file.path));
+  const nextWarnings = [...state.warnings];
+  for (const requiredFile of REQUIRED_BUNDLE_FILES) {
+    if (!filePaths.has(requiredFile)) {
+      nextWarnings.push(`Required instructions file is missing: ${requiredFile}`);
+    }
+  }
+  for (const recommendedFile of RECOMMENDED_BUNDLE_FILES) {
+    if (!filePaths.has(recommendedFile)) {
+      nextWarnings.push(`Recommended instructions file is missing: ${recommendedFile}`);
+    }
+  }
   nextFiles.sort((left, right) => left.path.localeCompare(right.path));
   return {
     agentId: agent.id,
@@ -354,7 +369,7 @@ function toBundle(agent: AgentLike, state: BundleState, files: AgentInstructions
     entryFile: state.entryFile,
     resolvedEntryPath: state.resolvedEntryPath,
     editable: Boolean(state.rootPath),
-    warnings: state.warnings,
+    warnings: Array.from(new Set(nextWarnings)),
     legacyPromptTemplateActive: state.legacyPromptTemplateActive,
     legacyBootstrapPromptTemplateActive: state.legacyBootstrapPromptTemplateActive,
     files: nextFiles,
@@ -465,6 +480,40 @@ export function agentInstructionsService() {
     const files = await listFilesRecursive(state.rootPath);
     const summaries = await Promise.all(files.map((relativePath) => readFileSummary(state.rootPath!, relativePath, state.entryFile)));
     return toBundle(agent, state, summaries);
+  }
+
+  async function validateBundle(agent: AgentLike): Promise<{
+    ok: boolean;
+    errors: string[];
+    warnings: string[];
+    bundle: AgentInstructionsBundle;
+  }> {
+    const bundle = await getBundle(agent);
+    const errors: string[] = [];
+    const warnings = [...bundle.warnings];
+    if (!bundle.rootPath) {
+      errors.push("Instructions bundle has no resolved root path.");
+    }
+    if (!bundle.resolvedEntryPath) {
+      errors.push("Instructions bundle has no resolved entry path.");
+    }
+    const filePaths = new Set(bundle.files.map((file) => file.path));
+    for (const requiredFile of REQUIRED_BUNDLE_FILES) {
+      if (!filePaths.has(requiredFile)) {
+        errors.push(`Required instructions file is missing: ${requiredFile}`);
+      }
+    }
+    for (const recommendedFile of RECOMMENDED_BUNDLE_FILES) {
+      if (!filePaths.has(recommendedFile)) {
+        warnings.push(`Recommended instructions file is missing: ${recommendedFile}`);
+      }
+    }
+    return {
+      ok: errors.length === 0,
+      errors,
+      warnings: Array.from(new Set(warnings)),
+      bundle,
+    };
   }
 
   async function readFile(agent: AgentLike, relativePath: string): Promise<AgentInstructionsFileDetail> {
@@ -724,6 +773,7 @@ export function agentInstructionsService() {
 
   return {
     getBundle,
+    validateBundle,
     readFile,
     updateBundle,
     writeFile,

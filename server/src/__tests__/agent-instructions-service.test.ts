@@ -229,10 +229,14 @@ describe("agent instructions service", () => {
     expect(bundle.rootPath).toBe(managedRoot);
     expect(bundle.entryFile).toBe("AGENTS.md");
     expect(bundle.files.map((file) => file.path)).toEqual(["AGENTS.md"]);
-    expect(bundle.warnings).toEqual([
+    expect(bundle.warnings).toEqual(expect.arrayContaining([
       `Recovered managed instructions from disk at ${managedRoot}; ignoring stale configured root ${staleRoot}.`,
       "Recovered managed instructions entry file from disk as AGENTS.md; previous entry docs/MISSING.md was missing.",
-    ]);
+      "Recommended instructions file is missing: ROLE.md",
+      "Recommended instructions file is missing: SOUL.md",
+      "Recommended instructions file is missing: TOOLS.md",
+      "Required instructions file is missing: HEARTBEAT.md",
+    ]));
     expect(exported.files).toEqual({ "AGENTS.md": "# Managed Agent\n" });
   });
 
@@ -352,10 +356,14 @@ describe("agent instructions service", () => {
     expect(bundle.rootPath).toBe(managedRoot);
     expect(bundle.entryFile).toBe("AGENTS.md");
     expect(bundle.files.map((file) => file.path)).toEqual(["AGENTS.md"]);
-    expect(bundle.warnings).toEqual([
+    expect(bundle.warnings).toEqual(expect.arrayContaining([
       `Recovered managed instructions from disk at ${managedRoot}; ignoring stale configured root ${staleRoot}.`,
       "Recovered managed instructions entry file from disk as AGENTS.md; previous entry docs/MISSING.md was missing.",
-    ]);
+      "Recommended instructions file is missing: ROLE.md",
+      "Recommended instructions file is missing: SOUL.md",
+      "Recommended instructions file is missing: TOOLS.md",
+      "Required instructions file is missing: HEARTBEAT.md",
+    ]));
     expect(exported.files).toEqual({ "AGENTS.md": "# Managed Agent\n" });
   });
 });

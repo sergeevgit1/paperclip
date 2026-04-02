@@ -1706,6 +1706,18 @@ export function agentRoutes(db: Db) {
     res.json(bundle);
   });
 
+  router.get("/agents/:id/preflight", async (req, res) => {
+    const id = req.params.id as string;
+    const agent = await svc.getById(id);
+    if (!agent) {
+      res.status(404).json({ error: "Agent not found" });
+      return;
+    }
+    assertCompanyAccess(req, agent.companyId);
+    const validation = await instructions.validateBundle(agent);
+    res.json(validation);
+  });
+
   router.get("/agents/:id/instructions-bundle/file", async (req, res) => {
     const id = req.params.id as string;
     const existing = await svc.getById(id);

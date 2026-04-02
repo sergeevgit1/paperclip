@@ -80,6 +80,10 @@ export async function runCommand(opts: RunOptions): Promise<void> {
     process.exit(1);
   }
 
+  if (process.env.PAPERCLIP_UI_DEV_MIDDLEWARE === undefined && config.server.serveUi === false) {
+    process.env.PAPERCLIP_UI_DEV_MIDDLEWARE = "false";
+  }
+
   p.log.step("Starting Paperclip server...");
   const startedServer = await importServerEntry();
 

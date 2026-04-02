@@ -43,7 +43,7 @@ const adapterConfigSchema = z.record(z.unknown()).superRefine((value, ctx) => {
   }
 });
 
-export const createAgentSchema = z.object({
+const baseCreateAgentSchema = z.object({
   name: z.string().trim().min(1).max(120),
   role: z.enum(AGENT_ROLES).optional().default("general"),
   title: z.string().optional().nullable(),
@@ -57,7 +57,12 @@ export const createAgentSchema = z.object({
   budgetMonthlyCents: z.number().int().nonnegative().optional().default(0),
   permissions: agentPermissionsSchema.optional(),
   metadata: z.record(z.unknown()).optional().nullable(),
-}).superRefine((value, ctx) => {
+});
+
+function validateAgentReportingLine(
+  value: z.infer<typeof baseCreateAgentSchema>,
+  ctx: z.RefinementCtx,
+) {
   if (value.role !== "ceo" && !value.reportsTo) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -65,18 +70,22 @@ export const createAgentSchema = z.object({
       path: ["reportsTo"],
     });
   }
-});
+}
+
+export const createAgentSchema = baseCreateAgentSchema.superRefine(validateAgentReportingLine);
 
 export type CreateAgent = z.infer<typeof createAgentSchema>;
 
-export const createAgentHireSchema = createAgentSchema.extend({
-  sourceIssueId: z.string().uuid().optional().nullable(),
-  sourceIssueIds: z.array(z.string().uuid()).optional(),
-});
+export const createAgentHireSchema = baseCreateAgentSchema
+  .extend({
+    sourceIssueId: z.string().uuid().optional().nullable(),
+    sourceIssueIds: z.array(z.string().uuid()).optional(),
+  })
+  .superRefine(validateAgentReportingLine);
 
 export type CreateAgentHire = z.infer<typeof createAgentHireSchema>;
 
-export const updateAgentSchema = createAgentSchema
+export const updateAgentSchema = baseCreateAgentSchema
   .omit({ permissions: true })
   .partial()
   .extend({
@@ -84,6 +93,15 @@ export const updateAgentSchema = createAgentSchema
     replaceAdapterConfig: z.boolean().optional(),
     status: z.enum(AGENT_STATUSES).optional(),
     spentMonthlyCents: z.number().int().nonnegative().optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.role !== undefined && value.role !== "ceo" && value.reportsTo === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Non-CEO agents must report to a manager or CEO",
+        path: ["reportsTo"],
+      });
+    }
   });
 
 export type UpdateAgent = z.infer<typeof updateAgentSchema>;

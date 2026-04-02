@@ -60,7 +60,12 @@ describe("prepareOpenCodeRuntimeConfig", () => {
         glob: "allow",
         grep: "allow",
         list: "allow",
-        read: "allow",
+        read: {
+          "*": "allow",
+          "*.env": "allow",
+          "*.env.*": "allow",
+          "*.env.example": "allow",
+        },
         task: "allow",
         webfetch: "allow",
         external_directory: "allow",
@@ -79,8 +84,13 @@ describe("prepareOpenCodeRuntimeConfig", () => {
       config: { dangerouslySkipPermissions: false },
     });
 
-    expect(prepared.env).toEqual({ XDG_CONFIG_HOME: configHome });
-    expect(prepared.notes).toEqual([]);
+    expect(prepared.env.XDG_CONFIG_HOME).not.toBe(configHome);
+    expect(path.join(prepared.env.XDG_CONFIG_HOME, "opencode", "opencode.json")).not.toBe(
+      path.join(configHome, "opencode", "opencode.json"),
+    );
+    expect(prepared.notes).toEqual([
+      "Injected runtime OpenCode config with allow-all permissions for unattended runs to avoid headless approval prompts.",
+    ]);
     await prepared.cleanup();
   });
 });

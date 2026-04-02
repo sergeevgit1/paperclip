@@ -236,6 +236,8 @@ export type {
   FinanceByKind,
   HeartbeatRun,
   HeartbeatRunEvent,
+  ProjectDiagnostics,
+  ProjectDiagnosticsWorkspace,
   AgentRuntimeState,
   AgentTaskSession,
   AgentWakeupRequest,

@@ -1,10 +1,11 @@
 import { Router } from "express";
 import type { Db } from "@paperclipai/db";
 import { and, count, eq, gt, inArray, isNull, sql } from "drizzle-orm";
-import { heartbeatRuns, instanceUserRoles, invites } from "@paperclipai/db";
+import { agents, heartbeatRuns, instanceUserRoles, invites } from "@paperclipai/db";
 import type { DeploymentExposure, DeploymentMode } from "@paperclipai/shared";
 import { readPersistedDevServerStatus, toDevServerHealthStatus } from "../dev-server-status.js";
 import { instanceSettingsService } from "../services/instance-settings.js";
+import { agentInstructionsService } from "../services/agent-instructions.js";
 import { serverVersion } from "../version.js";
 
 export function healthRoutes(
@@ -59,6 +60,12 @@ export function healthRoutes(
 
     const persistedDevServerStatus = readPersistedDevServerStatus();
     let devServer: ReturnType<typeof toDevServerHealthStatus> | undefined;
+    let instructionsHealth:
+      | {
+          invalidAgentCount: number;
+          warningAgentCount: number;
+        }
+      | undefined;
     if (persistedDevServerStatus) {
       const instanceSettings = instanceSettingsService(db);
       const experimentalSettings = await instanceSettings.getExperimental();
@@ -72,6 +79,20 @@ export function healthRoutes(
         autoRestartEnabled: experimentalSettings.autoRestartDevServerWhenIdle ?? false,
         activeRunCount,
       });
+
+      const instructionsSvc = agentInstructionsService();
+      const allAgents = await db.select().from(agents);
+      let invalidAgentCount = 0;
+      let warningAgentCount = 0;
+      for (const agent of allAgents) {
+        const validation = await instructionsSvc.validateBundle(agent);
+        if (!validation.ok) invalidAgentCount += 1;
+        else if (validation.warnings.length > 0) warningAgentCount += 1;
+      }
+      instructionsHealth = {
+        invalidAgentCount,
+        warningAgentCount,
+      };
     }
 
     res.json({
@@ -85,6 +106,7 @@ export function healthRoutes(
       features: {
         companyDeletionEnabled: opts.companyDeletionEnabled,
       },
+      ...(instructionsHealth ? { instructionsHealth } : {}),
       ...(devServer ? { devServer } : {}),
     });
   });

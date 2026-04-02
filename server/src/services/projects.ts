@@ -16,6 +16,7 @@ import {
 import { listWorkspaceRuntimeServicesForProjectWorkspaces } from "./workspace-runtime.js";
 import { parseProjectExecutionWorkspacePolicy } from "./execution-workspace-policy.js";
 import { resolveManagedProjectWorkspaceDir } from "../home-paths.js";
+import fs from "node:fs/promises";
 
 type ProjectRow = typeof projects.$inferSelect;
 type ProjectWorkspaceRow = typeof projectWorkspaces.$inferSelect;
@@ -298,6 +299,41 @@ function normalizeWorkspaceCwd(value: unknown): string | null {
   return cwd === REPO_ONLY_CWD_SENTINEL ? null : cwd;
 }
 
+async function directoryExists(targetPath: string): Promise<boolean> {
+  return fs.stat(targetPath).then((stats) => stats.isDirectory()).catch(() => false);
+}
+
+async function countDirectoryEntries(targetPath: string): Promise<number | null> {
+  try {
+    const entries = await fs.readdir(targetPath);
+    return entries.length;
+  } catch {
+    return null;
+  }
+}
+
+async function rootLooksLikeCodebase(targetPath: string): Promise<boolean> {
+  try {
+    const entries = new Set(await fs.readdir(targetPath));
+    return [
+      "package.json",
+      "pnpm-workspace.yaml",
+      "turbo.json",
+      ".git",
+      "src",
+      "apps",
+      "packages",
+      "README.md",
+      "Dockerfile",
+      "go.mod",
+      "pyproject.toml",
+      "Cargo.toml",
+    ].some((entry) => entries.has(entry));
+  } catch {
+    return false;
+  }
+}
+
 function deriveNameFromCwd(cwd: string): string {
   const normalized = cwd.replace(/[\\/]+$/, "");
   const segments = normalized.split(/[\\/]/).filter(Boolean);
@@ -425,6 +461,79 @@ export function projectService(db: Db) {
       if (!withGoals) return null;
       const [enriched] = await attachWorkspaces(db, [withGoals]);
       return enriched ?? null;
+    },
+
+    getDiagnostics: async (id: string) => {
+      const project = await db
+        .select()
+        .from(projects)
+        .where(eq(projects.id, id))
+        .then((rows) => rows[0] ?? null);
+      if (!project) return null;
+
+      const workspaces = await db
+        .select()
+        .from(projectWorkspaces)
+        .where(eq(projectWorkspaces.projectId, id))
+        .orderBy(desc(projectWorkspaces.isPrimary), asc(projectWorkspaces.createdAt), asc(projectWorkspaces.id));
+
+      const workspaceDiagnostics = await Promise.all(
+        workspaces.map(async (workspace) => {
+          const cwd = normalizeWorkspaceCwd(workspace.cwd);
+          const cwdExists = cwd ? await directoryExists(cwd) : false;
+          const rootEntryCount = cwd && cwdExists ? await countDirectoryEntries(cwd) : null;
+          const looksLikeCodebase = cwd && cwdExists ? await rootLooksLikeCodebase(cwd) : false;
+          return {
+            id: workspace.id,
+            name: workspace.name,
+            isPrimary: workspace.isPrimary,
+            sourceType: workspace.sourceType,
+            cwd,
+            cwdExists,
+            rootEntryCount,
+            repoUrl: workspace.repoUrl ?? null,
+            looksLikeCodebase,
+          };
+        }),
+      );
+
+      const primaryWorkspace = workspaceDiagnostics.find((workspace) => workspace.isPrimary) ?? workspaceDiagnostics[0] ?? null;
+      const managedFolder = resolveManagedProjectWorkspaceDir({
+        companyId: project.companyId,
+        projectId: project.id,
+        repoName: deriveRepoNameFromRepoUrl(primaryWorkspace?.repoUrl ?? null),
+      });
+      const managedFolderExists = await directoryExists(managedFolder);
+      const managedFolderEntryCount = managedFolderExists ? await countDirectoryEntries(managedFolder) : null;
+      const managedFolderLooksLikeCodebase = managedFolderExists ? await rootLooksLikeCodebase(managedFolder) : false;
+
+      const warnings: string[] = [];
+      if (workspaceDiagnostics.length === 0) warnings.push("Project has no attached workspaces.");
+      if (!primaryWorkspace) warnings.push("Project has no primary workspace.");
+      if (primaryWorkspace && (!primaryWorkspace.cwd || !primaryWorkspace.cwdExists)) {
+        warnings.push("Primary workspace cwd is missing or unavailable.");
+      }
+      const codebaseReady =
+        workspaceDiagnostics.some((workspace) => workspace.looksLikeCodebase)
+        || managedFolderLooksLikeCodebase;
+      if (!codebaseReady) {
+        warnings.push("No attached workspace currently looks like a codebase checkout.");
+      }
+
+      return {
+        projectId: project.id,
+        companyId: project.companyId,
+        projectName: project.name,
+        hasPrimaryWorkspace: Boolean(primaryWorkspace),
+        workspaceCount: workspaceDiagnostics.length,
+        workspaces: workspaceDiagnostics,
+        managedFolder,
+        managedFolderExists,
+        managedFolderEntryCount,
+        managedFolderLooksLikeCodebase,
+        codebaseReady,
+        warnings,
+      };
     },
 
     create: async (

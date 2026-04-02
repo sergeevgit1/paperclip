@@ -42,6 +42,33 @@ export interface HeartbeatRun {
   updatedAt: Date;
 }
 
+export interface ProjectDiagnosticsWorkspace {
+  id: string;
+  name: string;
+  isPrimary: boolean;
+  sourceType: string;
+  cwd: string | null;
+  cwdExists: boolean;
+  rootEntryCount: number | null;
+  repoUrl: string | null;
+  looksLikeCodebase?: boolean;
+}
+
+export interface ProjectDiagnostics {
+  projectId: string;
+  companyId: string;
+  projectName: string;
+  hasPrimaryWorkspace: boolean;
+  workspaceCount: number;
+  workspaces: ProjectDiagnosticsWorkspace[];
+  managedFolder: string;
+  managedFolderExists: boolean;
+  managedFolderEntryCount: number | null;
+  managedFolderLooksLikeCodebase?: boolean;
+  codebaseReady: boolean;
+  warnings: string[];
+}
+
 export interface HeartbeatRunEvent {
   id: number;
   companyId: string;

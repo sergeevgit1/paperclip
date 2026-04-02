@@ -33,7 +33,8 @@ const CWD_ENV_PATH = resolve(process.cwd(), ".env");
 const isSameFile = existsSync(CWD_ENV_PATH) && existsSync(PAPERCLIP_ENV_FILE_PATH)
   ? realpathSync(CWD_ENV_PATH) === realpathSync(PAPERCLIP_ENV_FILE_PATH)
   : CWD_ENV_PATH === PAPERCLIP_ENV_FILE_PATH;
-if (!isSameFile && existsSync(CWD_ENV_PATH)) {
+const shouldLoadCwdEnv = !process.env.PAPERCLIP_CONFIG;
+if (shouldLoadCwdEnv && !isSameFile && existsSync(CWD_ENV_PATH)) {
   loadDotenv({ path: CWD_ENV_PATH, override: false, quiet: true });
 }
 

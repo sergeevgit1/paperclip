@@ -123,7 +123,7 @@ function makeAgent(adapterType: string) {
     role: "engineer",
     title: "Engineer",
     status: "active",
-    reportsTo: null,
+    reportsTo: "22222222-2222-4222-8222-222222222222",
     capabilities: null,
     adapterType,
     adapterConfig: {},
@@ -300,6 +300,7 @@ describe("agent skill routes", () => {
       .send({
         name: "QA Agent",
         role: "engineer",
+        reportsTo: "22222222-2222-4222-8222-222222222222",
         adapterType: "claude_local",
         desiredSkills: ["paperclip"],
         adapterConfig: {},
@@ -325,6 +326,7 @@ describe("agent skill routes", () => {
       .send({
         name: "QA Agent",
         role: "engineer",
+        reportsTo: "22222222-2222-4222-8222-222222222222",
         adapterType: "claude_local",
         adapterConfig: {
           promptTemplate: "You are QA.",
@@ -368,21 +370,20 @@ describe("agent skill routes", () => {
       });
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
-    expect(mockAgentInstructionsService.materializeManagedBundle).toHaveBeenCalledWith(
-      expect.objectContaining({
-        id: "11111111-1111-4111-8111-111111111111",
-        role: "ceo",
-        adapterType: "claude_local",
-      }),
-      expect.objectContaining({
-        "AGENTS.md": expect.stringContaining("You are the CEO."),
-        "HEARTBEAT.md": expect.stringContaining("CEO Heartbeat Checklist"),
-        "SOUL.md": expect.stringContaining("CEO Persona"),
-        "TOOLS.md": expect.stringContaining("# Tools"),
-        "ROLE.md": expect.stringContaining("CEO Role Charter"),
-      }),
-      { entryFile: "AGENTS.md", replaceExisting: false },
-    );
+    const ceoBundleCall = mockAgentInstructionsService.materializeManagedBundle.mock.calls.at(-1);
+    expect(ceoBundleCall?.[0]).toMatchObject({
+      id: "11111111-1111-4111-8111-111111111111",
+      role: "ceo",
+      adapterType: "claude_local",
+    });
+    expect(ceoBundleCall?.[1]).toMatchObject({
+      "AGENTS.md": expect.stringContaining("You are the CEO."),
+      "HEARTBEAT.md": expect.stringContaining("CEO Heartbeat Checklist"),
+      "SOUL.md": expect.stringContaining("CEO Persona"),
+      "TOOLS.md": expect.stringContaining("# Tools"),
+    });
+    expect(ceoBundleCall?.[1]).not.toHaveProperty("ROLE.md");
+    expect(ceoBundleCall?.[2]).toEqual({ entryFile: "AGENTS.md", replaceExisting: false });
   });
 
   it("materializes the bundled default instruction set for non-CEO agents with no prompt template", async () => {
@@ -391,6 +392,7 @@ describe("agent skill routes", () => {
       .send({
         name: "Engineer",
         role: "engineer",
+        reportsTo: "22222222-2222-4222-8222-222222222222",
         adapterType: "claude_local",
         adapterConfig: {},
       });
@@ -421,6 +423,7 @@ describe("agent skill routes", () => {
       .send({
         name: "QA Agent",
         role: "engineer",
+        reportsTo: "22222222-2222-4222-8222-222222222222",
         adapterType: "claude_local",
         desiredSkills: ["paperclip"],
         adapterConfig: {},
@@ -447,6 +450,7 @@ describe("agent skill routes", () => {
       .send({
         name: "QA Agent",
         role: "engineer",
+        reportsTo: "22222222-2222-4222-8222-222222222222",
         adapterType: "claude_local",
         adapterConfig: {
           promptTemplate: "You are QA.",
@@ -478,6 +482,7 @@ describe("agent skill routes", () => {
       .send({
         name: "Budgeted Agent",
         role: "engineer",
+        reportsTo: "22222222-2222-4222-8222-222222222222",
         adapterType: "process",
         budgetMonthlyCents: 250,
         adapterConfig: {},
@@ -504,6 +509,7 @@ describe("agent skill routes", () => {
       .send({
         name: "QA Agent",
         role: "engineer",
+        reportsTo: "22222222-2222-4222-8222-222222222222",
         adapterType: "claude_local",
         adapterConfig: {},
       });
@@ -520,6 +526,7 @@ describe("agent skill routes", () => {
       .send({
         name: "QA Agent",
         role: "engineer",
+        reportsTo: "22222222-2222-4222-8222-222222222222",
         adapterType: "claude_local",
         adapterConfig: {},
       });

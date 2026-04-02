@@ -101,9 +101,9 @@
     "dist"
   ],
   "scripts": {
-    "build": "pnpm --filter @paperclipai/shared build && tsc",
+    "build": "corepack pnpm --filter @paperclipai/shared build && tsc",
     "clean": "rm -rf dist",
-    "typecheck": "pnpm --filter @paperclipai/shared build && tsc --noEmit",
+    "typecheck": "corepack pnpm --filter @paperclipai/shared build && tsc --noEmit",
     "dev:server": "tsx src/dev-cli.ts"
   },
   "dependencies": {

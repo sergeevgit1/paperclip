@@ -1218,12 +1218,30 @@ export function issueService(db: Db) {
         return enriched;
       }
 
+      if (
+        current.assigneeAgentId === agentId &&
+        current.status === "todo" &&
+        current.executionRunId &&
+        current.executionRunId !== checkoutRunId
+      ) {
+        throw conflict("Issue checkout conflict", {
+          issueId: current.id,
+          status: current.status,
+          assigneeAgentId: current.assigneeAgentId,
+          checkoutRunId: current.checkoutRunId,
+          executionRunId: current.executionRunId,
+          recoverable: true,
+          reason: "issue_already_reserved_by_active_run",
+        });
+      }
+
       throw conflict("Issue checkout conflict", {
         issueId: current.id,
         status: current.status,
         assigneeAgentId: current.assigneeAgentId,
         checkoutRunId: current.checkoutRunId,
         executionRunId: current.executionRunId,
+        recoverable: current.assigneeAgentId === agentId,
       });
     },
 

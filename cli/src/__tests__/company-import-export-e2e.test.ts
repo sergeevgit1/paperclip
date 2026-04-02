@@ -12,6 +12,9 @@ import {
 } from "./helpers/embedded-postgres.js";
 import { createStoredZipArchive } from "./helpers/zip.js";
 
+const PNPM_CMD = "corepack";
+const PNPM_ARGS_PREFIX = ["pnpm"] as const;
+
 const execFileAsync = promisify(execFile);
 type ServerProcess = ReturnType<typeof spawn>;
 
@@ -186,8 +189,8 @@ async function api<T>(baseUrl: string, pathname: string, init?: RequestInit): Pr
 async function runCliJson<T>(args: string[], opts: { apiBase: string; configPath: string }) {
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
   const result = await execFileAsync(
-    "pnpm",
-    ["--silent", "paperclipai", ...args, "--api-base", opts.apiBase, "--config", opts.configPath, "--json"],
+    PNPM_CMD,
+    [...PNPM_ARGS_PREFIX, "--silent", "paperclipai", ...args, "--api-base", opts.apiBase, "--config", opts.configPath, "--json"],
     {
       cwd: repoRoot,
       env: createCliEnv(),
@@ -252,8 +255,8 @@ describeEmbeddedPostgres("paperclipai company import/export e2e", () => {
     const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
     const output = { stdout: [] as string[], stderr: [] as string[] };
     const child = spawn(
-      "pnpm",
-      ["paperclipai", "run", "--config", configPath],
+      PNPM_CMD,
+      [...PNPM_ARGS_PREFIX, "paperclipai", "run", "--config", configPath],
       {
         cwd: repoRoot,
         env: createServerEnv(configPath, port, tempDb.connectionString),
@@ -295,8 +298,27 @@ describeEmbeddedPostgres("paperclipai company import/export e2e", () => {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
+          reportsTo: null,
+          role: "ceo",
+          name: "Export CEO",
+          adapterType: "claude_local",
+          adapterConfig: {
+            promptTemplate: "You lead company portability.",
+          },
+        }),
+      },
+    );
+
+    const sourceEngineer = await api<{ id: string; name: string }>(
+      apiBase,
+      `/api/companies/${sourceCompany.id}/agents`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
           name: "Export Engineer",
           role: "engineer",
+          reportsTo: sourceAgent.id,
           adapterType: "claude_local",
           adapterConfig: {
             promptTemplate: "You verify company portability.",
@@ -331,7 +353,7 @@ describeEmbeddedPostgres("paperclipai company import/export e2e", () => {
           description: largeIssueDescription,
           status: "todo",
           projectId: sourceProject.id,
-          assigneeAgentId: sourceAgent.id,
+          assigneeAgentId: sourceEngineer.id,
         }),
       },
     );
@@ -378,8 +400,8 @@ describeEmbeddedPostgres("paperclipai company import/export e2e", () => {
     );
 
     expect(importedNew.company.action).toBe("created");
-    expect(importedNew.agents).toHaveLength(1);
-    expect(importedNew.agents[0]?.action).toBe("created");
+    expect(importedNew.agents).toHaveLength(2);
+    expect(importedNew.agents.every((agent) => agent.action === "created")).toBe(true);
 
     const importedAgents = await api<Array<{ id: string; name: string }>>(
       apiBase,
@@ -395,6 +417,7 @@ describeEmbeddedPostgres("paperclipai company import/export e2e", () => {
     );
 
     expect(importedAgents.map((agent) => agent.name)).toContain(sourceAgent.name);
+    expect(importedAgents.map((agent) => agent.name)).toContain(sourceEngineer.name);
     expect(importedProjects.map((project) => project.name)).toContain(sourceProject.name);
     expect(importedIssues.map((issue) => issue.title)).toContain(sourceIssue.title);
 
@@ -467,8 +490,8 @@ describeEmbeddedPostgres("paperclipai company import/export e2e", () => {
       `/api/companies/${importedNew.company.id}/issues`,
     );
 
-    expect(twiceImportedAgents).toHaveLength(2);
-    expect(new Set(twiceImportedAgents.map((agent) => agent.name)).size).toBe(2);
+    expect(twiceImportedAgents).toHaveLength(4);
+    expect(new Set(twiceImportedAgents.map((agent) => agent.name)).size).toBe(4);
     expect(twiceImportedProjects).toHaveLength(2);
     expect(twiceImportedIssues).toHaveLength(2);
 

@@ -220,7 +220,10 @@ describe("deriveTaskKeyWithHeartbeatFallback", () => {
 describe("ensureAgentWorkspaceBootstrapFromInstructions", () => {
   it("copies ROLE.md and seeds daily memory notes for agent home and parent workspace", async () => {
     const tmpPaperclipHome = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-heartbeat-home-"));
+    const originalPaperclipHome = process.env.PAPERCLIP_HOME;
+    const originalPaperclipInstanceId = process.env.PAPERCLIP_INSTANCE_ID;
     process.env.PAPERCLIP_HOME = tmpPaperclipHome;
+    process.env.PAPERCLIP_INSTANCE_ID = "default";
 
     const instructionsRoot = path.join(
       tmpPaperclipHome,
@@ -232,7 +235,7 @@ describe("ensureAgentWorkspaceBootstrapFromInstructions", () => {
       "agent-1",
       "instructions",
     );
-    const workspaceDir = path.join(tmpPaperclipHome, "instances", "default", "agents", "agent-1");
+    const workspaceDir = path.join(tmpPaperclipHome, "instances", "default", "workspaces", "agent-1");
     await fs.mkdir(instructionsRoot, { recursive: true });
     await Promise.all([
       fs.writeFile(path.join(instructionsRoot, "AGENTS.md"), "# agents\n", "utf8"),
@@ -256,6 +259,11 @@ describe("ensureAgentWorkspaceBootstrapFromInstructions", () => {
     const noteName = `${yyyy}-${mm}-${dd}.md`;
     await expect(fs.readFile(path.join(workspaceDir, "memory", noteName), "utf8")).resolves.toContain(`# ${noteName}`);
     await expect(fs.readFile(path.join(path.dirname(workspaceDir), "memory", noteName), "utf8")).resolves.toContain(`# ${noteName}`);
+
+    if (originalPaperclipHome === undefined) delete process.env.PAPERCLIP_HOME;
+    else process.env.PAPERCLIP_HOME = originalPaperclipHome;
+    if (originalPaperclipInstanceId === undefined) delete process.env.PAPERCLIP_INSTANCE_ID;
+    else process.env.PAPERCLIP_INSTANCE_ID = originalPaperclipInstanceId;
   });
 });
 

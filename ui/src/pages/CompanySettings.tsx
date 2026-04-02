@@ -1,5 +1,6 @@
 import { ChangeEvent, useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { DEFAULT_FEEDBACK_DATA_SHARING_TERMS_VERSION } from "@paperclipai/shared";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useToast } from "../context/ToastContext";
@@ -8,9 +9,7 @@ import { accessApi } from "../api/access";
 import { assetsApi } from "../api/assets";
 import { queryKeys } from "../lib/queryKeys";
 import { Button } from "@/components/ui/button";
-import { Settings, Check, Download, Upload, Brush, Building2, ShieldCheck, UserPlus, Archive } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Settings, Check, Download, Upload } from "lucide-react";
 import { CompanyPatternIcon } from "../components/CompanyPatternIcon";
 import {
   Field,
@@ -23,6 +22,8 @@ type AgentSnippetInput = {
   connectionCandidates?: string[] | null;
   testResolutionUrl?: string | null;
 };
+
+const FEEDBACK_TERMS_URL = import.meta.env.VITE_FEEDBACK_TERMS_URL?.trim() || "https://paperclip.ing/tos";
 
 export function CompanySettings() {
   const {
@@ -80,6 +81,27 @@ export function CompanySettings() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
     }
+  });
+
+  const feedbackSharingMutation = useMutation({
+    mutationFn: (enabled: boolean) =>
+      companiesApi.update(selectedCompanyId!, {
+        feedbackDataSharingEnabled: enabled,
+      }),
+    onSuccess: (_company, enabled) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
+      pushToast({
+        title: enabled ? "Feedback sharing enabled" : "Feedback sharing disabled",
+        tone: "success",
+      });
+    },
+    onError: (err) => {
+      pushToast({
+        title: "Failed to update feedback sharing",
+        body: err instanceof Error ? err.message : "Unknown error",
+        tone: "error",
+      });
+    },
   });
 
   const inviteMutation = useMutation({
@@ -223,31 +245,18 @@ export function CompanySettings() {
   }
 
   return (
-    <div className="w-full space-y-6 pb-6">
-      <Card className="border-border/80 bg-card/70 py-0">
-        <CardHeader className="px-5 py-4">
-          <div className="flex items-start justify-between gap-3">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <Settings className="h-5 w-5 text-muted-foreground" />
-                <CardTitle className="text-base">Company Settings</CardTitle>
-              </div>
-              <p className="text-sm text-muted-foreground">Manage company identity, hiring controls, invites, and packaging flows.</p>
-            </div>
-            <Badge variant="outline" className="mt-0.5">{selectedCompany.name}</Badge>
-          </div>
-        </CardHeader>
-      </Card>
+    <div className="max-w-2xl space-y-6">
+      <div className="flex items-center gap-2">
+        <Settings className="h-5 w-5 text-muted-foreground" />
+        <h1 className="text-lg font-semibold">Company Settings</h1>
+      </div>
 
-      <div className="grid gap-6 xl:grid-cols-2">
       {/* General */}
       <div className="space-y-4">
-        <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-          <Building2 className="h-3.5 w-3.5" />
+        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
           General
         </div>
-        <Card className="py-0">
-          <CardContent className="space-y-3 px-4 py-4">
+        <div className="space-y-3 rounded-md border border-border px-4 py-4">
           <Field label="Company name" hint="The display name for your company.">
             <input
               className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
@@ -268,18 +277,15 @@ export function CompanySettings() {
               onChange={(e) => setDescription(e.target.value)}
             />
           </Field>
-          </CardContent>
-        </Card>
+        </div>
       </div>
 
       {/* Appearance */}
       <div className="space-y-4">
-        <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-          <Brush className="h-3.5 w-3.5" />
+        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
           Appearance
         </div>
-        <Card className="py-0">
-          <CardContent className="space-y-3 px-4 py-4">
+        <div className="space-y-3 rounded-md border border-border px-4 py-4">
           <div className="flex items-start gap-4">
             <div className="shrink-0">
               <CompanyPatternIcon
@@ -368,8 +374,7 @@ export function CompanySettings() {
               </Field>
             </div>
           </div>
-          </CardContent>
-        </Card>
+        </div>
       </div>
 
       {/* Save button for General + Appearance */}
@@ -396,31 +401,69 @@ export function CompanySettings() {
       )}
 
       {/* Hiring */}
-      <div className="space-y-4">
-        <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-          <ShieldCheck className="h-3.5 w-3.5" />
+      <div className="space-y-4" data-testid="company-settings-team-section">
+        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
           Hiring
         </div>
-        <Card className="py-0">
-          <CardContent className="px-4 py-3">
+        <div className="rounded-md border border-border px-4 py-3">
           <ToggleField
             label="Require board approval for new hires"
             hint="New agent hires stay pending until approved by board."
             checked={!!selectedCompany.requireBoardApprovalForNewAgents}
             onChange={(v) => settingsMutation.mutate(v)}
+            toggleTestId="company-settings-team-approval-toggle"
           />
-          </CardContent>
-        </Card>
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          Feedback Sharing
+        </div>
+        <div className="space-y-3 rounded-md border border-border px-4 py-4">
+          <ToggleField
+            label="Allow sharing voted AI outputs with Paperclip Labs"
+            hint="Only AI-generated outputs you explicitly vote on are eligible for feedback sharing."
+            checked={!!selectedCompany.feedbackDataSharingEnabled}
+            onChange={(enabled) => feedbackSharingMutation.mutate(enabled)}
+          />
+          <p className="text-sm text-muted-foreground">
+            Votes are always saved locally. This setting controls whether voted AI outputs may also be marked for sharing with Paperclip Labs.
+          </p>
+          <div className="space-y-1 text-xs text-muted-foreground">
+            <div>
+              Terms version: {selectedCompany.feedbackDataSharingTermsVersion ?? DEFAULT_FEEDBACK_DATA_SHARING_TERMS_VERSION}
+            </div>
+            {selectedCompany.feedbackDataSharingConsentAt ? (
+              <div>
+                Enabled {new Date(selectedCompany.feedbackDataSharingConsentAt).toLocaleString()}
+                {selectedCompany.feedbackDataSharingConsentByUserId
+                  ? ` by ${selectedCompany.feedbackDataSharingConsentByUserId}`
+                  : ""}
+              </div>
+            ) : (
+              <div>Sharing is currently disabled.</div>
+            )}
+            {FEEDBACK_TERMS_URL ? (
+              <a
+                href={FEEDBACK_TERMS_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex text-foreground underline underline-offset-4"
+              >
+                Read our terms of service
+              </a>
+            ) : null}
+          </div>
+        </div>
       </div>
 
       {/* Invites */}
-      <div className="space-y-4 xl:col-span-2">
-        <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-          <UserPlus className="h-3.5 w-3.5" />
+      <div className="space-y-4" data-testid="company-settings-invites-section">
+        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
           Invites
         </div>
-        <Card className="py-0">
-          <CardContent className="space-y-3 px-4 py-4">
+        <div className="space-y-3 rounded-md border border-border px-4 py-4">
           <div className="flex items-center gap-1.5">
             <span className="text-xs text-muted-foreground">
               Generate an OpenClaw agent invite snippet.
@@ -429,6 +472,7 @@ export function CompanySettings() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Button
+              data-testid="company-settings-invites-generate-button"
               size="sm"
               onClick={() => inviteMutation.mutate()}
               disabled={inviteMutation.isPending}
@@ -442,7 +486,10 @@ export function CompanySettings() {
             <p className="text-sm text-destructive">{inviteError}</p>
           )}
           {inviteSnippet && (
-            <div className="rounded-md border border-border bg-muted/30 p-2">
+            <div
+              className="rounded-md border border-border bg-muted/30 p-2"
+              data-testid="company-settings-invites-snippet"
+            >
               <div className="flex items-center justify-between gap-2">
                 <div className="text-xs text-muted-foreground">
                   OpenClaw Invite Prompt
@@ -459,12 +506,14 @@ export function CompanySettings() {
               </div>
               <div className="mt-1 space-y-1.5">
                 <textarea
+                  data-testid="company-settings-invites-snippet-textarea"
                   className="h-[28rem] w-full rounded-md border border-border bg-background px-2 py-1.5 font-mono text-xs outline-none"
                   value={inviteSnippet}
                   readOnly
                 />
                 <div className="flex justify-end">
                   <Button
+                    data-testid="company-settings-invites-copy-button"
                     size="sm"
                     variant="ghost"
                     onClick={async () => {
@@ -484,8 +533,7 @@ export function CompanySettings() {
               </div>
             </div>
           )}
-          </CardContent>
-        </Card>
+        </div>
       </div>
 
       {/* Import / Export */}
@@ -493,8 +541,7 @@ export function CompanySettings() {
         <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
           Company Packages
         </div>
-        <Card className="py-0">
-          <CardContent className="px-4 py-4">
+        <div className="rounded-md border border-border px-4 py-4">
           <p className="text-sm text-muted-foreground">
             Import and export have moved to dedicated pages accessible from the{" "}
             <a href="/org" className="underline hover:text-foreground">Org Chart</a> header.
@@ -513,18 +560,15 @@ export function CompanySettings() {
               </a>
             </Button>
           </div>
-          </CardContent>
-        </Card>
+        </div>
       </div>
 
       {/* Danger Zone */}
       <div className="space-y-4">
-        <div className="flex items-center gap-2 text-xs font-medium text-destructive uppercase tracking-wide">
-          <Archive className="h-3.5 w-3.5" />
+        <div className="text-xs font-medium text-destructive uppercase tracking-wide">
           Danger Zone
         </div>
-        <Card className="border-destructive/40 bg-destructive/5 py-0">
-          <CardContent className="space-y-3 px-4 py-4">
+        <div className="space-y-3 rounded-md border border-destructive/40 bg-destructive/5 px-4 py-4">
           <p className="text-sm text-muted-foreground">
             Archive this company to hide it from the sidebar. This persists in
             the database.
@@ -565,13 +609,11 @@ export function CompanySettings() {
               <span className="text-xs text-destructive">
                 {archiveMutation.error instanceof Error
                   ? archiveMutation.error.message
-                : "Failed to archive company"}
+                  : "Failed to archive company"}
               </span>
             )}
           </div>
-          </CardContent>
-        </Card>
-      </div>
+        </div>
       </div>
     </div>
   );

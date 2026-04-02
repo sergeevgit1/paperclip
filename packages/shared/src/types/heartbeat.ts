@@ -69,6 +69,18 @@ export interface ProjectDiagnostics {
   warnings: string[];
 }
 
+export interface AgentWakeupSkipped {
+  status: "skipped";
+  reason: string;
+  message: string | null;
+  issueId: string | null;
+  executionRunId: string | null;
+  executionAgentId: string | null;
+  executionAgentName: string | null;
+}
+
+export type AgentWakeupResponse = HeartbeatRun | AgentWakeupSkipped;
+
 export interface HeartbeatRunEvent {
   id: number;
   companyId: string;

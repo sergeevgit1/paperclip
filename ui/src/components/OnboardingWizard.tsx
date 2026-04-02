@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AdapterEnvironmentTestResult } from "@paperclipai/shared";
 import { useLocation, useNavigate, useParams } from "@/lib/router";
 import { useDialog } from "../context/DialogContext";
@@ -7,7 +7,6 @@ import { useCompany } from "../context/CompanyContext";
 import { companiesApi } from "../api/companies";
 import { goalsApi } from "../api/goals";
 import { agentsApi } from "../api/agents";
-import { instanceSettingsApi } from "../api/instanceSettings";
 import { issuesApi } from "../api/issues";
 import { projectsApi } from "../api/projects";
 import { queryKeys } from "../lib/queryKeys";
@@ -18,7 +17,6 @@ import {
   PopoverTrigger
 } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
-import { useI18n } from "@/i18n";
 import { cn } from "../lib/utils";
 import {
   extractModelName,
@@ -58,21 +56,27 @@ import {
   ChevronDown,
   X
 } from "lucide-react";
-import { formatDateTime } from "@/i18n";
+import { HermesIcon } from "./HermesIcon";
 
 type Step = 1 | 2 | 3 | 4;
 type AdapterType =
   | "claude_local"
   | "codex_local"
   | "gemini_local"
+  | "hermes_local"
   | "opencode_local"
   | "pi_local"
   | "cursor"
   | "http"
   | "openclaw_gateway";
 
+const DEFAULT_TASK_DESCRIPTION = `You are the CEO. You set the direction for the company.
+
+- hire a founding engineer
+- write a hiring plan
+- break the roadmap into concrete tasks and start delegating work`;
+
 export function OnboardingWizard() {
-  const { t } = useI18n();
   const { onboardingOpen, onboardingOptions, closeOnboarding } = useDialog();
   const { companies, setSelectedCompanyId, loading: companiesLoading } = useCompany();
   const queryClient = useQueryClient();
@@ -115,12 +119,6 @@ export function OnboardingWizard() {
   const [command, setCommand] = useState("");
   const [args, setArgs] = useState("");
   const [url, setUrl] = useState("");
-  const [openCodeCustomProviderEnabled, setOpenCodeCustomProviderEnabled] = useState(false);
-  const [openCodeCustomProviderId, setOpenCodeCustomProviderId] = useState("");
-  const [openCodeCustomProviderName, setOpenCodeCustomProviderName] = useState("");
-  const [openCodeCustomProviderBaseUrl, setOpenCodeCustomProviderBaseUrl] = useState("");
-  const [openCodeCustomProviderApiKey, setOpenCodeCustomProviderApiKey] = useState("");
-  const [openCodeCustomProviderHeadersJson, setOpenCodeCustomProviderHeadersJson] = useState("");
   const [adapterEnvResult, setAdapterEnvResult] =
     useState<AdapterEnvironmentTestResult | null>(null);
   const [adapterEnvError, setAdapterEnvError] = useState<string | null>(null);
@@ -132,10 +130,10 @@ export function OnboardingWizard() {
 
   // Step 3
   const [taskTitle, setTaskTitle] = useState(
-    t("onboarding.task.defaultTitle")
+    "Hire your first engineer and create a hiring plan"
   );
   const [taskDescription, setTaskDescription] = useState(
-    t("onboarding.task.defaultDescription")
+    DEFAULT_TASK_DESCRIPTION
   );
 
   // Auto-grow textarea for task description
@@ -208,73 +206,11 @@ export function OnboardingWizard() {
     queryFn: () => agentsApi.adapterModels(createdCompanyId!, adapterType),
     enabled: Boolean(createdCompanyId) && effectiveOnboardingOpen && step === 2
   });
-  const openCodeRuntimeStatus = useQuery({
-    queryKey: ["instance", "runtime", "opencode"],
-    queryFn: () => instanceSettingsApi.getOpenCodeRuntimeStatus(),
-    enabled: effectiveOnboardingOpen && step === 2 && adapterType === "opencode_local"
-  });
-  const installOpenCodeRuntime = useMutation({
-    mutationFn: () => instanceSettingsApi.installOpenCodeRuntime(),
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["instance", "runtime", "opencode"] }),
-        createdCompanyId
-          ? queryClient.invalidateQueries({ queryKey: queryKeys.agents.adapterModels(createdCompanyId, adapterType) })
-          : Promise.resolve(),
-      ]);
-      setAdapterEnvError(null);
-      setError(null);
-    },
-    onError: (err) => {
-      setAdapterEnvError(err instanceof Error ? err.message : "Failed to install OpenCode.");
-    },
-  });
-  const registerOpenCodeProvider = useMutation({
-    mutationFn: async () => {
-      if (!createdCompanyId) throw new Error("Create or select a company first.");
-      if (!openCodeCustomProviderEnabled) throw new Error("Enable custom provider first.");
-      const providerId = openCodeCustomProviderId.trim();
-      const baseURL = openCodeCustomProviderBaseUrl.trim();
-      const apiKey = openCodeCustomProviderApiKey.trim();
-      if (!providerId) throw new Error("Provider ID is required.");
-      if (!baseURL) throw new Error("Base URL is required.");
-      if (!apiKey) throw new Error("API key is required.");
-      let headers: Record<string, string> = {};
-      if (openCodeCustomProviderHeadersJson.trim()) {
-        const parsed = JSON.parse(openCodeCustomProviderHeadersJson);
-        if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-          throw new Error("Extra headers must be a JSON object.");
-        }
-        headers = Object.fromEntries(
-          Object.entries(parsed).filter((entry): entry is [string, string] => typeof entry[1] === "string")
-        );
-      }
-      return agentsApi.registerOpenCodeProvider(createdCompanyId, {
-        providerId,
-        providerName: openCodeCustomProviderName.trim() || undefined,
-        baseURL,
-        apiKey,
-        headers,
-      });
-    },
-    onSuccess: async (result) => {
-      if (createdCompanyId) {
-        await queryClient.invalidateQueries({ queryKey: queryKeys.agents.adapterModels(createdCompanyId, adapterType) });
-      }
-      setAdapterEnvError(null);
-      setError(null);
-      if (result.models.length > 0) {
-        setModel(`${result.providerId}/${result.models[0]!.id}`);
-      }
-    },
-    onError: (err) => {
-      setAdapterEnvError(err instanceof Error ? err.message : "Failed to register provider.");
-    },
-  });
   const isLocalAdapter =
     adapterType === "claude_local" ||
     adapterType === "codex_local" ||
     adapterType === "gemini_local" ||
+    adapterType === "hermes_local" ||
     adapterType === "opencode_local" ||
     adapterType === "pi_local" ||
     adapterType === "cursor";
@@ -284,6 +220,8 @@ export function OnboardingWizard() {
       ? "codex"
       : adapterType === "gemini_local"
         ? "gemini"
+      : adapterType === "hermes_local"
+        ? "hermes"
       : adapterType === "pi_local"
       ? "pi"
       : adapterType === "cursor"
@@ -344,15 +282,6 @@ export function OnboardingWizard() {
       }));
   }, [filteredModels, adapterType]);
 
-  const opencodeCommandMissing = useMemo(() => {
-    const messages = [
-      adapterModelsError instanceof Error ? adapterModelsError.message : null,
-      adapterEnvError,
-      error,
-    ].filter((value): value is string => Boolean(value));
-    return messages.some((value) => /command not found in path|command is not executable/i.test(value));
-  }, [adapterEnvError, adapterModelsError, error]);
-
   function reset() {
     setStep(1);
     setLoading(false);
@@ -365,19 +294,13 @@ export function OnboardingWizard() {
     setCommand("");
     setArgs("");
     setUrl("");
-    setOpenCodeCustomProviderEnabled(false);
-    setOpenCodeCustomProviderId("");
-    setOpenCodeCustomProviderName("");
-    setOpenCodeCustomProviderBaseUrl("");
-    setOpenCodeCustomProviderApiKey("");
-    setOpenCodeCustomProviderHeadersJson("");
     setAdapterEnvResult(null);
     setAdapterEnvError(null);
     setAdapterEnvLoading(false);
     setForceUnsetAnthropicApiKey(false);
     setUnsetAnthropicLoading(false);
-    setTaskTitle(t("onboarding.task.defaultTitle"));
-    setTaskDescription(t("onboarding.task.defaultDescription"));
+    setTaskTitle("Hire your first engineer and create a hiring plan");
+    setTaskDescription(DEFAULT_TASK_DESCRIPTION);
     setCreatedCompanyId(null);
     setCreatedCompanyPrefix(null);
     setCreatedCompanyGoalId(null);
@@ -407,12 +330,6 @@ export function OnboardingWizard() {
       command,
       args,
       url,
-      openCodeCustomProviderEnabled,
-      openCodeCustomProviderId,
-      openCodeCustomProviderName,
-      openCodeCustomProviderBaseUrl,
-      openCodeCustomProviderApiKey,
-      openCodeCustomProviderHeadersJson,
       dangerouslySkipPermissions:
         adapterType === "claude_local" || adapterType === "opencode_local",
       dangerouslyBypassSandbox:
@@ -437,7 +354,9 @@ export function OnboardingWizard() {
     adapterConfigOverride?: Record<string, unknown>
   ): Promise<AdapterEnvironmentTestResult | null> {
     if (!createdCompanyId) {
-      setAdapterEnvError(t("onboarding.error.selectCompanyBeforeTest"));
+      setAdapterEnvError(
+        "Create or select a company before testing adapter environment."
+      );
       return null;
     }
     setAdapterEnvLoading(true);
@@ -454,7 +373,7 @@ export function OnboardingWizard() {
       return result;
     } catch (err) {
       setAdapterEnvError(
-        err instanceof Error ? err.message : t("onboarding.error.adapterEnvTestFailed")
+        err instanceof Error ? err.message : "Adapter environment test failed"
       );
       return null;
     } finally {
@@ -492,7 +411,7 @@ export function OnboardingWizard() {
 
       setStep(2);
     } catch (err) {
-      setError(err instanceof Error ? err.message : t("onboarding.error.createCompanyFailed"));
+      setError(err instanceof Error ? err.message : "Failed to create company");
     } finally {
       setLoading(false);
     }
@@ -506,27 +425,31 @@ export function OnboardingWizard() {
       if (adapterType === "opencode_local") {
         const selectedModelId = model.trim();
         if (!selectedModelId) {
-          setError(t("onboarding.error.opencodeRequiresModel"));
+          setError(
+            "OpenCode requires an explicit model in provider/model format."
+          );
           return;
         }
         if (adapterModelsError) {
           setError(
             adapterModelsError instanceof Error
               ? adapterModelsError.message
-              : t("onboarding.error.loadOpencodeModels")
+              : "Failed to load OpenCode models."
           );
           return;
         }
         if (adapterModelsLoading || adapterModelsFetching) {
-          setError(t("onboarding.error.opencodeModelsLoading"));
+          setError(
+            "OpenCode models are still loading. Please wait and try again."
+          );
           return;
         }
         const discoveredModels = adapterModels ?? [];
         if (!discoveredModels.some((entry) => entry.id === selectedModelId)) {
           setError(
             discoveredModels.length === 0
-              ? t("onboarding.error.noOpencodeModels")
-              : t("onboarding.error.opencodeModelUnavailable", { modelId: selectedModelId })
+              ? "No OpenCode models discovered. Run `opencode models` and authenticate providers."
+              : `Configured OpenCode model is unavailable: ${selectedModelId}`
           );
           return;
         }
@@ -558,7 +481,7 @@ export function OnboardingWizard() {
       });
       setStep(3);
     } catch (err) {
-      setError(err instanceof Error ? err.message : t("onboarding.error.createAgentFailed"));
+      setError(err instanceof Error ? err.message : "Failed to create agent");
     } finally {
       setLoading(false);
     }
@@ -598,13 +521,15 @@ export function OnboardingWizard() {
 
       const result = await runAdapterEnvironmentTest(configWithUnset);
       if (result?.status === "fail") {
-        setError(t("onboarding.error.unsetAnthropicStillFailing"));
+        setError(
+          "Retried with ANTHROPIC_API_KEY unset in adapter config, but the environment test is still failing."
+        );
       }
     } catch (err) {
       setError(
         err instanceof Error
           ? err.message
-          : t("onboarding.error.unsetAnthropicRetryFailed")
+          : "Failed to unset ANTHROPIC_API_KEY and retry."
       );
     } finally {
       setUnsetAnthropicLoading(false);
@@ -670,7 +595,7 @@ export function OnboardingWizard() {
           : `/issues/${issueRef}`
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : t("onboarding.error.createTaskFailed"));
+      setError(err instanceof Error ? err.message : "Failed to create task");
     } finally {
       setLoading(false);
     }
@@ -710,7 +635,7 @@ export function OnboardingWizard() {
             className="absolute top-4 left-4 z-10 rounded-sm p-1.5 text-muted-foreground/60 hover:text-foreground transition-colors"
           >
             <X className="h-5 w-5" />
-            <span className="sr-only">{t("onboarding.close")}</span>
+            <span className="sr-only">Close</span>
           </button>
 
           {/* Left half — form */}
@@ -725,10 +650,10 @@ export function OnboardingWizard() {
               <div className="flex items-center gap-0 mb-8 border-b border-border">
                 {(
                   [
-                    { step: 1 as Step, label: t("onboarding.step.company"), icon: Building2 },
-                    { step: 2 as Step, label: t("onboarding.step.agent"), icon: Bot },
-                    { step: 3 as Step, label: t("onboarding.step.task"), icon: ListTodo },
-                    { step: 4 as Step, label: t("onboarding.step.launch"), icon: Rocket }
+                    { step: 1 as Step, label: "Company", icon: Building2 },
+                    { step: 2 as Step, label: "Agent", icon: Bot },
+                    { step: 3 as Step, label: "Task", icon: ListTodo },
+                    { step: 4 as Step, label: "Launch", icon: Rocket }
                   ] as const
                 ).map(({ step: s, label, icon: Icon }) => (
                   <button
@@ -756,9 +681,9 @@ export function OnboardingWizard() {
                       <Building2 className="h-5 w-5 text-muted-foreground" />
                     </div>
                     <div>
-                      <h3 className="font-medium">{t("onboarding.company.title")}</h3>
+                      <h3 className="font-medium">Name your company</h3>
                       <p className="text-xs text-muted-foreground">
-                        {t("onboarding.company.subtitle")}
+                        This is the organization your agents will work for.
                       </p>
                     </div>
                   </div>
@@ -771,11 +696,11 @@ export function OnboardingWizard() {
                           : "text-muted-foreground group-focus-within:text-foreground"
                       )}
                     >
-                      {t("onboarding.company.name")}
+                      Company name
                     </label>
                     <input
                       className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
-                      placeholder={t("onboarding.company.namePlaceholder")}
+                      placeholder="Acme Corp"
                       value={companyName}
                       onChange={(e) => setCompanyName(e.target.value)}
                       autoFocus
@@ -790,11 +715,11 @@ export function OnboardingWizard() {
                           : "text-muted-foreground group-focus-within:text-foreground"
                       )}
                     >
-                      {t("onboarding.company.goal")}
+                      Mission / goal (optional)
                     </label>
                     <textarea
                       className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50 resize-none min-h-[60px]"
-                      placeholder={t("onboarding.company.goalPlaceholder")}
+                      placeholder="What is this company trying to achieve?"
                       value={companyGoal}
                       onChange={(e) => setCompanyGoal(e.target.value)}
                     />
@@ -809,19 +734,19 @@ export function OnboardingWizard() {
                       <Bot className="h-5 w-5 text-muted-foreground" />
                     </div>
                     <div>
-                      <h3 className="font-medium">{t("onboarding.agent.title")}</h3>
+                      <h3 className="font-medium">Create your first agent</h3>
                       <p className="text-xs text-muted-foreground">
-                        {t("onboarding.agent.subtitle")}
+                        Choose how this agent will run tasks.
                       </p>
                     </div>
                   </div>
                   <div>
                     <label className="text-xs text-muted-foreground mb-1 block">
-                      {t("onboarding.agent.name")}
+                      Agent name
                     </label>
                     <input
                       className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
-                      placeholder={t("onboarding.agent.namePlaceholder")}
+                      placeholder="CEO"
                       value={agentName}
                       onChange={(e) => setAgentName(e.target.value)}
                       autoFocus
@@ -831,7 +756,7 @@ export function OnboardingWizard() {
                   {/* Adapter type radio cards */}
                   <div>
                     <label className="text-xs text-muted-foreground mb-2 block">
-                      {t("onboarding.agent.adapterType")}
+                      Adapter type
                     </label>
                     <div className="grid grid-cols-2 gap-2">
                       {[
@@ -839,14 +764,14 @@ export function OnboardingWizard() {
                           value: "claude_local" as const,
                           label: "Claude Code",
                           icon: Sparkles,
-                           desc: t("onboarding.agent.adapter.claude.desc"),
+                          desc: "Local Claude agent",
                           recommended: true
                         },
                         {
                           value: "codex_local" as const,
                           label: "Codex",
                           icon: Code,
-                           desc: t("onboarding.agent.adapter.codex.desc"),
+                          desc: "Local Codex agent",
                           recommended: true
                         }
                       ].map((opt) => (
@@ -871,7 +796,7 @@ export function OnboardingWizard() {
                         >
                           {opt.recommended && (
                             <span className="absolute -top-1.5 right-1.5 bg-green-500 text-white text-[9px] font-semibold px-1.5 py-0.5 rounded-full leading-none">
-                              {t("onboarding.agent.recommended")}
+                              Recommended
                             </span>
                           )}
                           <opt.icon className="h-4 w-4" />
@@ -893,7 +818,7 @@ export function OnboardingWizard() {
                           showMoreAdapters ? "rotate-0" : "-rotate-90"
                         )}
                       />
-                      {t("onboarding.agent.moreAdapters")}
+                      More Agent Adapter Types
                     </button>
 
                     {showMoreAdapters && (
@@ -903,33 +828,39 @@ export function OnboardingWizard() {
                             value: "gemini_local" as const,
                             label: "Gemini CLI",
                             icon: Gem,
-                             desc: t("onboarding.agent.adapter.gemini.desc")
+                            desc: "Local Gemini agent"
                           },
                           {
                             value: "opencode_local" as const,
                             label: "OpenCode",
                             icon: OpenCodeLogoIcon,
-                             desc: t("onboarding.agent.adapter.opencode.desc")
+                            desc: "Local multi-provider agent"
                           },
                           {
                             value: "pi_local" as const,
                             label: "Pi",
                             icon: Terminal,
-                             desc: t("onboarding.agent.adapter.pi.desc")
+                            desc: "Local Pi agent"
                           },
                           {
                             value: "cursor" as const,
                             label: "Cursor",
                             icon: MousePointer2,
-                             desc: t("onboarding.agent.adapter.cursor.desc")
+                            desc: "Local Cursor agent"
+                          },
+                          {
+                            value: "hermes_local" as const,
+                            label: "Hermes Agent",
+                            icon: HermesIcon,
+                            desc: "Local multi-provider agent"
                           },
                           {
                             value: "openclaw_gateway" as const,
                             label: "OpenClaw Gateway",
                             icon: Bot,
-                             desc: t("onboarding.agent.adapter.openclaw.desc"),
-                             comingSoon: true,
-                             disabledLabel: t("onboarding.agent.adapter.openclaw.disabled")
+                            desc: "Invoke OpenClaw via gateway protocol",
+                            comingSoon: true,
+                            disabledLabel: "Configure OpenClaw within the App"
                           }
                         ].map((opt) => (
                           <button
@@ -969,8 +900,8 @@ export function OnboardingWizard() {
                             <span className="text-muted-foreground text-[10px]">
                               {opt.comingSoon
                                 ? (opt as { disabledLabel?: string })
-                                    .disabledLabel ?? t("onboarding.agent.comingSoon")
-                                 : opt.desc}
+                                    .disabledLabel ?? "Coming soon"
+                                : opt.desc}
                             </span>
                           </button>
                         ))}
@@ -982,102 +913,14 @@ export function OnboardingWizard() {
                   {(adapterType === "claude_local" ||
                     adapterType === "codex_local" ||
                     adapterType === "gemini_local" ||
+                    adapterType === "hermes_local" ||
                     adapterType === "opencode_local" ||
                     adapterType === "pi_local" ||
                     adapterType === "cursor") && (
                     <div className="space-y-3">
-                      {adapterType === "opencode_local" && (
-                        <div className="space-y-3 rounded-md border border-border/70 bg-accent/10 p-3">
-                          <label className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-                            <span>Custom OpenAI-compatible provider</span>
-                            <button
-                              type="button"
-                              data-slot="toggle"
-                              className={cn(
-                                "relative inline-flex h-5 w-9 items-center rounded-full transition-colors",
-                                openCodeCustomProviderEnabled ? "bg-green-600" : "bg-muted"
-                              )}
-                              onClick={() => setOpenCodeCustomProviderEnabled((v) => !v)}
-                            >
-                              <span
-                                className={cn(
-                                  "inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform",
-                                  openCodeCustomProviderEnabled ? "translate-x-4.5" : "translate-x-0.5"
-                                )}
-                              />
-                            </button>
-                          </label>
-                          {openCodeCustomProviderEnabled && (
-                            <div className="space-y-3">
-                              <div>
-                                <label className="text-xs text-muted-foreground mb-1 block">Provider ID</label>
-                                <input
-                                  className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm font-mono outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
-                                  placeholder="myprovider"
-                                  value={openCodeCustomProviderId}
-                                  onChange={(e) => setOpenCodeCustomProviderId(e.target.value)}
-                                />
-                              </div>
-                              <div>
-                                <label className="text-xs text-muted-foreground mb-1 block">Provider name</label>
-                                <input
-                                  className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
-                                  placeholder="My Provider"
-                                  value={openCodeCustomProviderName}
-                                  onChange={(e) => setOpenCodeCustomProviderName(e.target.value)}
-                                />
-                              </div>
-                              <div>
-                                <label className="text-xs text-muted-foreground mb-1 block">Base URL</label>
-                                <input
-                                  className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm font-mono outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
-                                  placeholder="https://api.example.com/v1"
-                                  value={openCodeCustomProviderBaseUrl}
-                                  onChange={(e) => setOpenCodeCustomProviderBaseUrl(e.target.value)}
-                                />
-                              </div>
-                              <div>
-                                <label className="text-xs text-muted-foreground mb-1 block">API key</label>
-                                <input
-                                  className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm font-mono outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
-                                  placeholder="sk-..."
-                                  value={openCodeCustomProviderApiKey}
-                                  onChange={(e) => setOpenCodeCustomProviderApiKey(e.target.value)}
-                                />
-                              </div>
-                              <div>
-                                <label className="text-xs text-muted-foreground mb-1 block">Extra headers JSON</label>
-                                <textarea
-                                  className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm font-mono outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50 min-h-[88px]"
-                                  placeholder='{"Helicone-User-Id": "paperclip"}'
-                                  value={openCodeCustomProviderHeadersJson}
-                                  onChange={(e) => setOpenCodeCustomProviderHeadersJson(e.target.value)}
-                                />
-                              </div>
-                              <div className="flex flex-wrap items-center gap-2">
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-7 px-2.5 text-xs"
-                                  onClick={() => void registerOpenCodeProvider.mutateAsync()}
-                                  disabled={registerOpenCodeProvider.isPending || !createdCompanyId}
-                                >
-                                  {registerOpenCodeProvider.isPending ? "Registering..." : "Register provider"}
-                                </Button>
-                                {registerOpenCodeProvider.data && (
-                                  <span className="text-[11px] text-muted-foreground">
-                                    Registered `{registerOpenCodeProvider.data.providerId}` and discovered {registerOpenCodeProvider.data.models.length} model{registerOpenCodeProvider.data.models.length === 1 ? "" : "s"}.
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
                       <div>
                         <label className="text-xs text-muted-foreground mb-1 block">
-                          {t("onboarding.agent.model")}
+                          Model
                         </label>
                         <Popover
                           open={modelOpen}
@@ -1097,9 +940,9 @@ export function OnboardingWizard() {
                                   ? selectedModel.label
                                   : model ||
                                     (adapterType === "opencode_local"
-                                      ? t("onboarding.agent.modelRequired")
-                                      : t("onboarding.agent.modelDefault"))}
-                               </span>
+                                      ? "Select model (required)"
+                                      : "Default")}
+                              </span>
                               <ChevronDown className="h-3 w-3 text-muted-foreground" />
                             </button>
                           </PopoverTrigger>
@@ -1109,7 +952,7 @@ export function OnboardingWizard() {
                           >
                             <input
                               className="w-full px-2 py-1.5 text-xs bg-transparent outline-none border-b border-border mb-1 placeholder:text-muted-foreground/50"
-                               placeholder={t("onboarding.agent.searchModels")}
+                              placeholder="Search models..."
                               value={modelSearch}
                               onChange={(e) => setModelSearch(e.target.value)}
                               autoFocus
@@ -1125,8 +968,8 @@ export function OnboardingWizard() {
                                   setModelOpen(false);
                                 }}
                               >
-                                 {t("onboarding.agent.modelDefault")}
-                               </button>
+                                Default
+                              </button>
                             )}
                             <div className="max-h-[240px] overflow-y-auto">
                               {groupedModels.map((group) => (
@@ -1166,57 +1009,11 @@ export function OnboardingWizard() {
                             </div>
                             {filteredModels.length === 0 && (
                               <p className="px-2 py-1.5 text-xs text-muted-foreground">
-                                 {t("onboarding.agent.noModels")}
-                               </p>
+                                No models discovered.
+                              </p>
                             )}
                           </PopoverContent>
                         </Popover>
-                        {adapterType === "opencode_local" && opencodeCommandMissing && (
-                          <div className="mt-2 rounded-md border border-amber-300/60 bg-amber-50/40 px-2.5 py-2 text-[11px] text-amber-900/90 space-y-2">
-                            <div className="space-y-1">
-                              <p className="font-medium">{t("onboarding.error.opencodeCommandMissing")}</p>
-                              <p>{t("onboarding.error.opencodeCommandMissingHelp")}</p>
-                              {openCodeRuntimeStatus.data?.installed && (
-                                <p>
-                                  Managed OpenCode runtime is installed at `{openCodeRuntimeStatus.data.command}`.
-                                </p>
-                              )}
-                            </div>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                className="h-7 px-2.5 text-xs"
-                                onClick={() => void installOpenCodeRuntime.mutateAsync()}
-                                disabled={installOpenCodeRuntime.isPending}
-                              >
-                                {installOpenCodeRuntime.isPending ? "Installing OpenCode..." : "Install OpenCode"}
-                              </Button>
-                              {openCodeRuntimeStatus.data?.version && (
-                                <span className="text-[10px] text-muted-foreground">
-                                  {openCodeRuntimeStatus.data.version}
-                                </span>
-                              )}
-                            </div>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              className="h-7 px-2.5 text-xs"
-                              onClick={() => {
-                                setAdapterType("claude_local");
-                                setModel("");
-                                setCommand("");
-                                setArgs("");
-                                setAdapterEnvError(null);
-                                setError(null);
-                              }}
-                            >
-                              {t("onboarding.action.switchToClaude")}
-                            </Button>
-                          </div>
-                        )}
                       </div>
                     </div>
                   )}
@@ -1226,10 +1023,11 @@ export function OnboardingWizard() {
                       <div className="flex items-center justify-between gap-2">
                         <div>
                           <p className="text-xs font-medium">
-                            {t("onboarding.agent.envCheck")}
+                            Adapter environment check
                           </p>
                           <p className="text-[11px] text-muted-foreground">
-                            {t("onboarding.agent.envCheckSubtitle")}
+                            Runs a live probe that asks the adapter CLI to
+                            respond with hello.
                           </p>
                         </div>
                         <Button
@@ -1239,7 +1037,7 @@ export function OnboardingWizard() {
                           disabled={adapterEnvLoading}
                           onClick={() => void runAdapterEnvironmentTest()}
                         >
-                          {adapterEnvLoading ? t("onboarding.agent.testing") : t("onboarding.agent.testNow")}
+                          {adapterEnvLoading ? "Testing..." : "Test now"}
                         </Button>
                       </div>
 
@@ -1253,7 +1051,7 @@ export function OnboardingWizard() {
                       adapterEnvResult.status === "pass" ? (
                         <div className="flex items-center gap-2 rounded-md border border-green-300 dark:border-green-500/40 bg-green-50 dark:bg-green-500/10 px-3 py-2 text-xs text-green-700 dark:text-green-300 animate-in fade-in slide-in-from-bottom-1 duration-300">
                           <Check className="h-3.5 w-3.5 shrink-0" />
-                          <span className="font-medium">{t("onboarding.agent.passed")}</span>
+                          <span className="font-medium">Passed</span>
                         </div>
                       ) : adapterEnvResult ? (
                         <AdapterEnvironmentResult result={adapterEnvResult} />
@@ -1262,7 +1060,10 @@ export function OnboardingWizard() {
                       {shouldSuggestUnsetAnthropicApiKey && (
                         <div className="rounded-md border border-amber-300/60 bg-amber-50/40 px-2.5 py-2 space-y-2">
                           <p className="text-[11px] text-amber-900/90 leading-relaxed">
-                            {t("onboarding.agent.unsetAnthropicHelp")}
+                            Claude failed while{" "}
+                            <span className="font-mono">ANTHROPIC_API_KEY</span>{" "}
+                            is set. You can clear it in this CEO adapter config
+                            and retry the probe.
                           </p>
                           <Button
                             size="sm"
@@ -1274,15 +1075,15 @@ export function OnboardingWizard() {
                             onClick={() => void handleUnsetAnthropicApiKey()}
                           >
                             {unsetAnthropicLoading
-                              ? t("onboarding.agent.retrying")
-                              : t("onboarding.agent.unsetAnthropic")}
+                              ? "Retrying..."
+                              : "Unset ANTHROPIC_API_KEY"}
                           </Button>
                         </div>
                       )}
 
                       {adapterEnvResult && adapterEnvResult.status === "fail" && (
                         <div className="rounded-md border border-border/70 bg-muted/20 px-2.5 py-2 text-[11px] space-y-1.5">
-                          <p className="font-medium">{t("onboarding.agent.manualDebug")}</p>
+                          <p className="font-medium">Manual debug</p>
                           <p className="text-muted-foreground font-mono break-all">
                             {adapterType === "cursor"
                               ? `${effectiveAdapterCommand} -p --mode ask --output-format json \"Respond with hello.\"`
@@ -1295,15 +1096,15 @@ export function OnboardingWizard() {
                               : `${effectiveAdapterCommand} --print - --output-format stream-json --verbose`}
                           </p>
                           <p className="text-muted-foreground">
-                            {t("onboarding.agent.prompt")}{" "}
-                            <span className="font-mono">{t("onboarding.agent.respondWithHello")}</span>
+                            Prompt:{" "}
+                            <span className="font-mono">Respond with hello.</span>
                           </p>
                           {adapterType === "cursor" ||
                           adapterType === "codex_local" ||
                           adapterType === "gemini_local" ||
                           adapterType === "opencode_local" ? (
                             <p className="text-muted-foreground">
-                              {t("onboarding.agent.authFailed")}{" "}
+                              If auth fails, set{" "}
                               <span className="font-mono">
                                 {adapterType === "cursor"
                                   ? "CURSOR_API_KEY"
@@ -1311,7 +1112,7 @@ export function OnboardingWizard() {
                                     ? "GEMINI_API_KEY"
                                     : "OPENAI_API_KEY"}
                               </span>{" "}
-                              {t("onboarding.agent.authInEnvOrRun")}{" "}
+                              in env or run{" "}
                               <span className="font-mono">
                                 {adapterType === "cursor"
                                   ? "agent login"
@@ -1320,14 +1121,14 @@ export function OnboardingWizard() {
                                     : adapterType === "gemini_local"
                                       ? "gemini auth"
                                       : "opencode auth login"}
-                              </span>{" "}
-                              {t("onboarding.agent.authRetry")}
+                              </span>
+                              .
                             </p>
                           ) : (
                             <p className="text-muted-foreground">
-                              {t("onboarding.agent.loginRequired")}{" "}
+                              If login is required, run{" "}
                               <span className="font-mono">claude login</span>{" "}
-                              {t("onboarding.agent.authRetry")}
+                              and retry.
                             </p>
                           )}
                         </div>
@@ -1340,8 +1141,8 @@ export function OnboardingWizard() {
                     <div>
                       <label className="text-xs text-muted-foreground mb-1 block">
                         {adapterType === "openclaw_gateway"
-                          ? t("onboarding.agent.gatewayUrl")
-                          : t("onboarding.agent.webhookUrl")}
+                          ? "Gateway URL"
+                          : "Webhook URL"}
                       </label>
                       <input
                         className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm font-mono outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
@@ -1365,19 +1166,20 @@ export function OnboardingWizard() {
                       <ListTodo className="h-5 w-5 text-muted-foreground" />
                     </div>
                     <div>
-                      <h3 className="font-medium">{t("onboarding.task.title")}</h3>
+                      <h3 className="font-medium">Give it something to do</h3>
                       <p className="text-xs text-muted-foreground">
-                        {t("onboarding.task.subtitle")}
+                        Give your agent a small task to start with — a bug fix,
+                        a research question, writing a script.
                       </p>
                     </div>
                   </div>
                   <div>
                     <label className="text-xs text-muted-foreground mb-1 block">
-                      {t("onboarding.task.name")}
+                      Task title
                     </label>
                     <input
                       className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
-                      placeholder={t("onboarding.task.namePlaceholder")}
+                      placeholder="e.g. Research competitor pricing"
                       value={taskTitle}
                       onChange={(e) => setTaskTitle(e.target.value)}
                       autoFocus
@@ -1385,12 +1187,12 @@ export function OnboardingWizard() {
                   </div>
                   <div>
                     <label className="text-xs text-muted-foreground mb-1 block">
-                      {t("onboarding.task.description")}
+                      Description (optional)
                     </label>
                     <textarea
                       ref={textareaRef}
                       className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50 resize-none min-h-[120px] max-h-[300px] overflow-y-auto"
-                      placeholder={t("onboarding.task.descriptionPlaceholder")}
+                      placeholder="Add more detail about what the agent should do..."
                       value={taskDescription}
                       onChange={(e) => setTaskDescription(e.target.value)}
                     />
@@ -1405,9 +1207,10 @@ export function OnboardingWizard() {
                       <Rocket className="h-5 w-5 text-muted-foreground" />
                     </div>
                     <div>
-                      <h3 className="font-medium">{t("onboarding.launch.title")}</h3>
+                      <h3 className="font-medium">Ready to launch</h3>
                       <p className="text-xs text-muted-foreground">
-                        {t("onboarding.launch.subtitle")}
+                        Everything is set up. Launching now will create the
+                        starter task, wake the agent, and open the issue.
                       </p>
                     </div>
                   </div>
@@ -1418,7 +1221,7 @@ export function OnboardingWizard() {
                         <p className="text-sm font-medium truncate">
                           {companyName}
                         </p>
-                        <p className="text-xs text-muted-foreground">{t("onboarding.summary.company")}</p>
+                        <p className="text-xs text-muted-foreground">Company</p>
                       </div>
                       <Check className="h-4 w-4 text-green-500 shrink-0" />
                     </div>
@@ -1440,7 +1243,7 @@ export function OnboardingWizard() {
                         <p className="text-sm font-medium truncate">
                           {taskTitle}
                         </p>
-                        <p className="text-xs text-muted-foreground">{t("onboarding.summary.task")}</p>
+                        <p className="text-xs text-muted-foreground">Task</p>
                       </div>
                       <Check className="h-4 w-4 text-green-500 shrink-0" />
                     </div>
@@ -1466,7 +1269,7 @@ export function OnboardingWizard() {
                       disabled={loading}
                     >
                       <ArrowLeft className="h-3.5 w-3.5 mr-1" />
-                      {t("onboarding.back")}
+                      Back
                     </Button>
                   )}
                 </div>
@@ -1482,7 +1285,7 @@ export function OnboardingWizard() {
                       ) : (
                         <ArrowRight className="h-3.5 w-3.5 mr-1" />
                       )}
-                      {loading ? t("onboarding.creating") : t("onboarding.next")}
+                      {loading ? "Creating..." : "Next"}
                     </Button>
                   )}
                   {step === 2 && (
@@ -1498,7 +1301,7 @@ export function OnboardingWizard() {
                       ) : (
                         <ArrowRight className="h-3.5 w-3.5 mr-1" />
                       )}
-                      {loading ? t("onboarding.creating") : t("onboarding.next")}
+                      {loading ? "Creating..." : "Next"}
                     </Button>
                   )}
                   {step === 3 && (
@@ -1512,7 +1315,7 @@ export function OnboardingWizard() {
                       ) : (
                         <ArrowRight className="h-3.5 w-3.5 mr-1" />
                       )}
-                      {loading ? t("onboarding.creating") : t("onboarding.next")}
+                      {loading ? "Creating..." : "Next"}
                     </Button>
                   )}
                   {step === 4 && (
@@ -1522,7 +1325,7 @@ export function OnboardingWizard() {
                       ) : (
                         <ArrowRight className="h-3.5 w-3.5 mr-1" />
                       )}
-                      {loading ? t("onboarding.creating") : t("onboarding.createOpenIssue")}
+                      {loading ? "Creating..." : "Create & Open Issue"}
                     </Button>
                   )}
                 </div>
@@ -1550,13 +1353,12 @@ function AdapterEnvironmentResult({
 }: {
   result: AdapterEnvironmentTestResult;
 }) {
-  const { t } = useI18n();
   const statusLabel =
     result.status === "pass"
-      ? t("onboarding.agent.passed")
+      ? "Passed"
       : result.status === "warn"
-      ? t("onboarding.status.warnings")
-      : t("onboarding.status.failed");
+      ? "Warnings"
+      : "Failed";
   const statusClass =
     result.status === "pass"
       ? "text-green-700 dark:text-green-300 border-green-300 dark:border-green-500/40 bg-green-50 dark:bg-green-500/10"
@@ -1569,7 +1371,7 @@ function AdapterEnvironmentResult({
       <div className="flex items-center justify-between gap-2">
         <span className="font-medium">{statusLabel}</span>
         <span className="opacity-80">
-          {formatDateTime(result.testedAt)}
+          {new Date(result.testedAt).toLocaleTimeString()}
         </span>
       </div>
       <div className="mt-1.5 space-y-1">
@@ -1590,7 +1392,7 @@ function AdapterEnvironmentResult({
             )}
             {check.hint && (
               <span className="block opacity-90 break-words">
-                {t("onboarding.hint")} {check.hint}
+                Hint: {check.hint}
               </span>
             )}
           </div>

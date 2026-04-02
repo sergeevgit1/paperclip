@@ -1,5 +1,5 @@
 {
-  "id": "af033897-4a8a-42b9-95fe-a381a45c22ff",
+  "id": "4ae31a44-1b98-4437-88ef-92b76d014107",
   "prevId": "869b0102-2cb8-48e8-a6d8-cab88f0fa7a8",
   "version": "7",
   "dialect": "postgresql",
@@ -1278,28 +1278,6 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "agents_company_name_active_idx": {
-          "name": "agents_company_name_active_idx",
-          "columns": [
-            {
-              "expression": "company_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "name",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"agents\".\"status\" <> 'terminated'",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -4108,6 +4086,19 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "format": {
+          "name": "format",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'markdown'"
         },
         "body": {
           "name": "body",

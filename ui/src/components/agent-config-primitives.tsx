@@ -66,6 +66,7 @@ export const adapterLabels: Record<string, string> = {
   opencode_local: "OpenCode (local)",
   openclaw_gateway: "OpenClaw Gateway",
   cursor: "Cursor (local)",
+  hermes_local: "Hermes Agent",
   process: "Process",
   http: "HTTP",
 };
@@ -106,11 +107,13 @@ export function ToggleField({
   hint,
   checked,
   onChange,
+  toggleTestId,
 }: {
   label: string;
   hint?: string;
   checked: boolean;
   onChange: (v: boolean) => void;
+  toggleTestId?: string;
 }) {
   return (
     <div className="flex items-center justify-between">
@@ -120,6 +123,8 @@ export function ToggleField({
       </div>
       <button
         data-slot="toggle"
+        data-testid={toggleTestId}
+        type="button"
         className={cn(
           "relative inline-flex h-5 w-9 items-center rounded-full transition-colors",
           checked ? "bg-green-600" : "bg-muted"

@@ -8,6 +8,7 @@ import type {
   AgentKeyCreated,
   AgentRuntimeState,
   AgentTaskSession,
+  AgentWakeupResponse,
   HeartbeatRun,
   Approval,
   AgentConfigRevision,
@@ -27,12 +28,10 @@ export interface AdapterModel {
   label: string;
 }
 
-export interface OpenCodeProviderRegistrationResult {
-  providerId: string;
-  providerName: string;
-  baseURL: string;
-  models: AdapterModel[];
-  configPath: string;
+export interface DetectedAdapterModel {
+  model: string;
+  provider: string;
+  source: string;
 }
 
 export interface ClaudeLoginResult {
@@ -167,19 +166,9 @@ export const agentsApi = {
     api.get<AdapterModel[]>(
       `/companies/${encodeURIComponent(companyId)}/adapters/${encodeURIComponent(type)}/models`,
     ),
-  registerOpenCodeProvider: (
-    companyId: string,
-    data: {
-      providerId: string;
-      providerName?: string;
-      baseURL: string;
-      apiKey: string;
-      headers?: Record<string, string>;
-    },
-  ) =>
-    api.post<OpenCodeProviderRegistrationResult>(
-      `/companies/${encodeURIComponent(companyId)}/adapters/opencode_local/providers/register`,
-      data,
+  detectModel: (companyId: string, type: string) =>
+    api.get<DetectedAdapterModel | null>(
+      `/companies/${encodeURIComponent(companyId)}/adapters/${encodeURIComponent(type)}/detect-model`,
     ),
   testEnvironment: (
     companyId: string,
@@ -201,7 +190,7 @@ export const agentsApi = {
       idempotencyKey?: string | null;
     },
     companyId?: string,
-  ) => api.post<HeartbeatRun | { status: "skipped" }>(agentPath(id, companyId, "/wakeup"), data),
+  ) => api.post<AgentWakeupResponse>(agentPath(id, companyId, "/wakeup"), data),
   loginWithClaude: (id: string, companyId?: string) =>
     api.post<ClaudeLoginResult>(agentPath(id, companyId, "/claude-login"), {}),
   availableSkills: () =>

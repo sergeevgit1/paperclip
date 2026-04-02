@@ -28,6 +28,7 @@ function shortIdFromUuid(value: string | null | undefined): string | null {
 export function deriveProjectUrlKey(name: string | null | undefined, fallback?: string | null): string {
   const base = normalizeProjectUrlKey(name);
   if (base && !hasNonAsciiContent(name)) return base;
+  // Non-ASCII content was stripped — append short UUID suffix for uniqueness.
   const shortId = shortIdFromUuid(fallback);
   if (base && shortId) return `${base}-${shortId}`;
   if (shortId) return shortId;

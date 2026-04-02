@@ -39,6 +39,17 @@ This starts:
 
 `pnpm dev` runs the server in watch mode and restarts on changes from workspace packages (including adapter packages). Use `pnpm dev:once` to run without file watching.
 
+`pnpm dev:once` auto-applies pending local migrations by default before starting the dev server.
+
+`pnpm dev` and `pnpm dev:once` are now idempotent for the current repo and instance: if the matching Paperclip dev runner is already alive, Paperclip reports the existing process instead of starting a duplicate.
+
+Inspect or stop the current repo's managed dev runner:
+
+```sh
+pnpm dev:list
+pnpm dev:stop
+```
+
 `pnpm dev:once` now tracks backend-relevant file changes and pending migrations. When the current boot is stale, the board UI shows a `Restart required` banner. You can also enable guarded auto-restart in `Instance Settings > Experimental`, which waits for queued/running local agent runs to finish before restarting the dev server.
 
 Tailscale/private-auth dev mode:
@@ -88,7 +99,7 @@ On the first container start in `authenticated` mode, the container now auto-run
 Or use Compose:
 
 ```sh
-docker compose -f docker-compose.quickstart.yml up --build
+docker compose -f docker/docker-compose.quickstart.yml up --build
 ```
 
 See `doc/DOCKER.md` for API key wiring (`OPENAI_API_KEY` / `ANTHROPIC_API_KEY`) and persistence details.
@@ -157,6 +168,8 @@ What these checks surface:
 
 This helps catch the most common local execution failures before they become heartbeat run errors.
 
+If the `codex` CLI is not installed or not on `PATH`, `codex_local` agent runs fail at execution time with a clear adapter error. Quota polling uses a short-lived `codex app-server` subprocess: when `codex` cannot be spawned, that provider reports `ok: false` in aggregated quota results and the API server keeps running (it must not exit on a missing binary).
+
 ## Worktree-local Instances
 
 When developing from multiple git worktrees, do not point two Paperclip servers at the same embedded PostgreSQL data directory.
@@ -184,6 +197,8 @@ Seed modes:
 - `--no-seed` creates an empty isolated instance
 
 After `worktree init`, both the server and the CLI auto-load the repo-local `.paperclip/.env` when run inside that worktree, so normal commands like `pnpm dev`, `paperclipai doctor`, and `paperclipai db:backup` stay scoped to the worktree instance.
+
+Provisioned git worktrees also pause all seeded routines in the isolated worktree database by default. This prevents copied daily/cron routines from firing unexpectedly inside the new workspace instance during development.
 
 That repo-local env also sets:
 

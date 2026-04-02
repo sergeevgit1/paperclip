@@ -45,5 +45,4 @@ if isinstance(data, dict) and "providers" in data:
     config_path.write_text(json.dumps(data, indent=2) + "\n")
 PY
 fi
-
 exec gosu node "$@"

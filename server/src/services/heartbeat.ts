@@ -76,7 +76,23 @@ const SESSIONED_LOCAL_ADAPTERS = new Set([
   "pi_local",
 ]);
 
-const AGENT_WORKSPACE_BOOTSTRAP_FILES = ["AGENTS.md", "HEARTBEAT.md", "SOUL.md", "TOOLS.md"] as const;
+const AGENT_WORKSPACE_BOOTSTRAP_FILES = ["AGENTS.md", "HEARTBEAT.md", "SOUL.md", "TOOLS.md", "ROLE.md"] as const;
+
+function currentDailyNoteFileName(date = new Date()): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}.md`;
+}
+
+async function ensureDailyMemoryNote(rootDir: string, date = new Date()): Promise<void> {
+  const memoryDir = path.join(rootDir, "memory");
+  const notePath = path.join(memoryDir, currentDailyNoteFileName(date));
+  await fs.mkdir(memoryDir, { recursive: true });
+  const exists = await fs.stat(notePath).then(() => true).catch(() => false);
+  if (exists) return;
+  await fs.writeFile(notePath, `# ${currentDailyNoteFileName(date)}\n\n`, "utf8");
+}
 
 async function ensureAgentWorkspaceBootstrapFromInstructions(input: {
   companyId: string;
@@ -106,6 +122,11 @@ async function ensureAgentWorkspaceBootstrapFromInstructions(input: {
       await fs.copyFile(sourcePath, targetPath);
     }),
   );
+
+  await Promise.all([
+    ensureDailyMemoryNote(input.workspaceDir),
+    ensureDailyMemoryNote(path.resolve(input.workspaceDir, "..")),
+  ]);
 }
 
 function deriveRepoNameFromRepoUrl(repoUrl: string | null): string | null {

@@ -379,6 +379,7 @@ describe("agent skill routes", () => {
         "HEARTBEAT.md": expect.stringContaining("CEO Heartbeat Checklist"),
         "SOUL.md": expect.stringContaining("CEO Persona"),
         "TOOLS.md": expect.stringContaining("# Tools"),
+        "ROLE.md": expect.stringContaining("CEO Role Charter"),
       }),
       { entryFile: "AGENTS.md", replaceExisting: false },
     );

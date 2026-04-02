@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import type { agents } from "@paperclipai/db";
 import { sessionCodec as codexSessionCodec } from "@paperclipai/adapter-codex-local/server";
 import { resolveDefaultAgentWorkspaceDir } from "../home-paths.js";
 import {
   buildExplicitResumeSessionOverride,
   deriveTaskKeyWithHeartbeatFallback,
+  ensureAgentWorkspaceBootstrapFromInstructions,
   formatRuntimeWorkspaceWarningLog,
   prioritizeProjectWorkspaceCandidatesForRun,
   parseSessionCompactionPolicy,
@@ -210,6 +214,48 @@ describe("deriveTaskKeyWithHeartbeatFallback", () => {
 
   it("returns null for empty context", () => {
     expect(deriveTaskKeyWithHeartbeatFallback({}, null)).toBeNull();
+  });
+});
+
+describe("ensureAgentWorkspaceBootstrapFromInstructions", () => {
+  it("copies ROLE.md and seeds daily memory notes for agent home and parent workspace", async () => {
+    const tmpPaperclipHome = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-heartbeat-home-"));
+    process.env.PAPERCLIP_HOME = tmpPaperclipHome;
+
+    const instructionsRoot = path.join(
+      tmpPaperclipHome,
+      "instances",
+      "default",
+      "companies",
+      "company-1",
+      "agents",
+      "agent-1",
+      "instructions",
+    );
+    const workspaceDir = path.join(tmpPaperclipHome, "instances", "default", "agents", "agent-1");
+    await fs.mkdir(instructionsRoot, { recursive: true });
+    await Promise.all([
+      fs.writeFile(path.join(instructionsRoot, "AGENTS.md"), "# agents\n", "utf8"),
+      fs.writeFile(path.join(instructionsRoot, "HEARTBEAT.md"), "# heartbeat\n", "utf8"),
+      fs.writeFile(path.join(instructionsRoot, "SOUL.md"), "# soul\n", "utf8"),
+      fs.writeFile(path.join(instructionsRoot, "TOOLS.md"), "# tools\n", "utf8"),
+      fs.writeFile(path.join(instructionsRoot, "ROLE.md"), "# role\n", "utf8"),
+    ]);
+
+    await ensureAgentWorkspaceBootstrapFromInstructions({
+      companyId: "company-1",
+      agentId: "agent-1",
+      workspaceDir,
+    });
+
+    await expect(fs.readFile(path.join(workspaceDir, "ROLE.md"), "utf8")).resolves.toContain("# role");
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, "0");
+    const dd = String(today.getDate()).padStart(2, "0");
+    const noteName = `${yyyy}-${mm}-${dd}.md`;
+    await expect(fs.readFile(path.join(workspaceDir, "memory", noteName), "utf8")).resolves.toContain(`# ${noteName}`);
+    await expect(fs.readFile(path.join(path.dirname(workspaceDir), "memory", noteName), "utf8")).resolves.toContain(`# ${noteName}`);
   });
 });
 

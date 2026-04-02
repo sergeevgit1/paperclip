@@ -76,6 +76,38 @@ const SESSIONED_LOCAL_ADAPTERS = new Set([
   "pi_local",
 ]);
 
+const AGENT_WORKSPACE_BOOTSTRAP_FILES = ["AGENTS.md", "HEARTBEAT.md", "SOUL.md", "TOOLS.md"] as const;
+
+async function ensureAgentWorkspaceBootstrapFromInstructions(input: {
+  companyId: string;
+  agentId: string;
+  workspaceDir: string;
+}): Promise<void> {
+  const instructionsDir = path.resolve(
+    resolveManagedProjectWorkspaceDir({
+      companyId: input.companyId,
+      projectId: "..",
+      repoName: null,
+    }),
+    `../companies/${input.companyId}/agents/${input.agentId}/instructions`,
+  );
+
+  await fs.mkdir(input.workspaceDir, { recursive: true });
+
+  await Promise.all(
+    AGENT_WORKSPACE_BOOTSTRAP_FILES.map(async (fileName) => {
+      const sourcePath = path.join(instructionsDir, fileName);
+      const targetPath = path.join(input.workspaceDir, fileName);
+      const [sourceExists, targetExists] = await Promise.all([
+        fs.stat(sourcePath).then(() => true).catch(() => false),
+        fs.stat(targetPath).then(() => true).catch(() => false),
+      ]);
+      if (!sourceExists || targetExists) return;
+      await fs.copyFile(sourcePath, targetPath);
+    }),
+  );
+}
+
 function deriveRepoNameFromRepoUrl(repoUrl: string | null): string | null {
   const trimmed = repoUrl?.trim() ?? "";
   if (!trimmed) return null;
@@ -2302,7 +2334,11 @@ export function heartbeatService(db: Db) {
       worktreePath: executionWorkspace.worktreePath,
       agentHome: await (async () => {
         const home = resolveDefaultAgentWorkspaceDir(agent.id);
-        await fs.mkdir(home, { recursive: true });
+        await ensureAgentWorkspaceBootstrapFromInstructions({
+          companyId: agent.companyId,
+          agentId: agent.id,
+          workspaceDir: home,
+        });
         return home;
       })(),
     };

@@ -277,8 +277,6 @@ describeEmbeddedPostgres("routine routes end-to-end", () => {
     );
   }, 20_000);
 
-  });
-
   it("runs routines with variable inputs and interpolates the execution issue description", async () => {
     const { companyId, agentId, projectId, userId } = await seedFixture();
     const app = await createApp({

@@ -1,1 +1,0 @@
-CREATE UNIQUE INDEX "agents_company_name_active_idx" ON "agents" USING btree ("company_id","name") WHERE "agents"."status" <> 'terminated';

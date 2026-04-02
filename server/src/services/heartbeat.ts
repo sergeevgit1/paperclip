@@ -2376,10 +2376,18 @@ export function heartbeatService(db: Db) {
       : null;
     const existingExecutionWorkspace =
       issueRef?.executionWorkspaceId ? await executionWorkspacesSvc.getById(issueRef.executionWorkspaceId) : null;
+    const staleExecutionWorkspaceReuse = isStaleExecutionWorkspaceReuseCandidate({
+      existingExecutionWorkspace,
+      issueProjectWorkspaceId: issueRef?.projectWorkspaceId ?? null,
+      resolvedWorkspaceId: resolvedWorkspace.workspaceId,
+      resolvedWorkspaceCwd: resolvedWorkspace.cwd,
+      resolvedWorkspaceRepoUrl: resolvedWorkspace.repoUrl,
+    });
     const shouldReuseExisting =
       issueRef?.executionWorkspacePreference === "reuse_existing" &&
       existingExecutionWorkspace &&
-      existingExecutionWorkspace.status !== "archived";
+      existingExecutionWorkspace.status !== "archived" &&
+      !staleExecutionWorkspaceReuse;
     const persistedExecutionWorkspaceMode = shouldReuseExisting && existingExecutionWorkspace
       ? issueExecutionWorkspaceModeForPersistedWorkspace(existingExecutionWorkspace.mode)
       : null;
@@ -2449,18 +2457,6 @@ export function heartbeatService(db: Db) {
         });
     const resolvedProjectId = executionWorkspace.projectId ?? issueRef?.projectId ?? executionProjectId ?? null;
     const resolvedProjectWorkspaceId = issueRef?.projectWorkspaceId ?? resolvedWorkspace.workspaceId ?? null;
-    const staleExecutionWorkspaceReuse = isStaleExecutionWorkspaceReuseCandidate({
-      existingExecutionWorkspace,
-      issueProjectWorkspaceId: issueRef?.projectWorkspaceId ?? null,
-      resolvedWorkspaceId: resolvedProjectWorkspaceId,
-      resolvedWorkspaceCwd: executionWorkspace.cwd,
-      resolvedWorkspaceRepoUrl: executionWorkspace.repoUrl,
-    });
-    const shouldReuseExisting =
-      issueRef?.executionWorkspacePreference === "reuse_existing" &&
-      existingExecutionWorkspace &&
-      existingExecutionWorkspace.status !== "archived" &&
-      !staleExecutionWorkspaceReuse;
     let persistedExecutionWorkspace = null;
     const nextExecutionWorkspaceMetadataBase = {
       ...(existingExecutionWorkspace?.metadata ?? {}),

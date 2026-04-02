@@ -1854,11 +1854,12 @@ export function heartbeatService(db: Db) {
     }
   }
 
-  async function reapOrphanedRuns(opts?: { staleThresholdMs?: number }) {
+  async function reapOrphanedRuns(opts?: { staleThresholdMs?: number; queuedStaleThresholdMs?: number }) {
     const staleThresholdMs = opts?.staleThresholdMs ?? 0;
+    const queuedStaleThresholdMs = opts?.queuedStaleThresholdMs ?? 0;
     const now = new Date();
 
-    // Find all runs stuck in "running" state (queued runs are legitimately waiting; resumeQueuedRuns handles them)
+    // Find all runs stuck in "running" state.
     const activeRuns = await db
       .select({
         run: heartbeatRuns,
@@ -1946,6 +1947,43 @@ export function heartbeatService(db: Db) {
       await startNextQueuedRunForAgent(run.agentId);
       runningProcesses.delete(run.id);
       reaped.push(run.id);
+    }
+
+    if (queuedStaleThresholdMs > 0) {
+      const queuedRuns = await db
+        .select()
+        .from(heartbeatRuns)
+        .where(eq(heartbeatRuns.status, "queued"));
+
+      for (const run of queuedRuns) {
+        const refTime = run.updatedAt ? new Date(run.updatedAt).getTime() : new Date(run.createdAt).getTime();
+        if (now.getTime() - refTime < queuedStaleThresholdMs) continue;
+
+        const failedQueuedRun = await setRunStatus(run.id, "failed", {
+          error: "Run stayed queued without starting; queue recovery marked it failed",
+          errorCode: "queue_stalled",
+          finishedAt: now,
+        });
+        await setWakeupStatus(run.wakeupRequestId, "failed", {
+          finishedAt: now,
+          error: "Run stayed queued without starting; queue recovery marked it failed",
+        });
+        const finalizedRun = failedQueuedRun ?? (await getRun(run.id));
+        if (!finalizedRun) continue;
+        await appendRunEvent(finalizedRun, await nextRunEventSeq(finalizedRun.id), {
+          eventType: "lifecycle",
+          stream: "system",
+          level: "error",
+          message: "Queued run stalled before execution and was failed by recovery",
+          payload: {
+            queuedStaleThresholdMs,
+          },
+        });
+        await releaseIssueExecutionAndPromote(finalizedRun);
+        await finalizeAgentStatus(run.agentId, "failed");
+        await startNextQueuedRunForAgent(run.agentId);
+        reaped.push(run.id);
+      }
     }
 
     if (reaped.length > 0) {

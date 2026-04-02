@@ -57,6 +57,14 @@ export const createAgentSchema = z.object({
   budgetMonthlyCents: z.number().int().nonnegative().optional().default(0),
   permissions: agentPermissionsSchema.optional(),
   metadata: z.record(z.unknown()).optional().nullable(),
+}).superRefine((value, ctx) => {
+  if (value.role !== "ceo" && !value.reportsTo) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Non-CEO agents must report to a manager or CEO",
+      path: ["reportsTo"],
+    });
+  }
 });
 
 export type CreateAgent = z.infer<typeof createAgentSchema>;

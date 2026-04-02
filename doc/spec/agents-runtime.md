@@ -26,6 +26,11 @@ An agent can be woken up in four ways:
 - `on_demand`: manual wakeup (button/API)
 - `automation`: system-triggered wakeup for future automations
 
+Current operational uses of `automation` include:
+
+- CEO triage wakeups for unassigned actionable tasks (`todo` / `blocked` with no assignee)
+- upward escalation wakeups when an issue-linked heartbeat run fails and needs manager/CEO review
+
 If an agent is already running, new wakeups are merged (coalesced) instead of launching duplicate runs.
 
 ## 3. What to configure per agent
@@ -122,6 +127,8 @@ If the connection drops, the UI reconnects automatically.
 1. Disable timer or set a long interval
 2. Keep wake-on-assignment enabled
 3. Use on-demand wakeups for manual nudges
+
+For CEO agents, keep automation wakeups enabled as well so unassigned triage work and escalations are not missed.
 
 ## 7.3 Safety-first loop
 

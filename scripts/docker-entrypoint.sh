@@ -26,4 +26,24 @@ if [ "$changed" = "1" ]; then
     chown -R node:node /paperclip
 fi
 
+OPENCODE_CONFIG=/paperclip/.config/opencode/opencode.json
+if [ -f "$OPENCODE_CONFIG" ]; then
+    python3 - <<'PY'
+import json
+from pathlib import Path
+
+config_path = Path("/paperclip/.config/opencode/opencode.json")
+try:
+    data = json.loads(config_path.read_text())
+except Exception:
+    raise SystemExit(0)
+
+if isinstance(data, dict) and "providers" in data:
+    del data["providers"]
+    if not isinstance(data.get("$schema"), str) or not data["$schema"].strip():
+        data["$schema"] = "https://opencode.ai/config.json"
+    config_path.write_text(json.dumps(data, indent=2) + "\n")
+PY
+fi
+
 exec gosu node "$@"

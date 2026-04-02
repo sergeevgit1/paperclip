@@ -273,6 +273,35 @@ GET /api/companies/company-1/dashboard
 
 ---
 
+## Worked Example: CEO Triage Heartbeat
+
+```
+# 1. Identity
+GET /api/agents/me
+-> { id: "ceo-1", role: "ceo", companyId: "company-1", ... }
+
+# 2. Check compact inbox
+GET /api/agents/me/inbox-lite
+-> [
+    { id: "issue-88", identifier: "PAP-88", title: "Investigate support queue", status: "todo", triage: true },
+    { id: "issue-90", identifier: "PAP-90", title: "Review launch brief", status: "in_progress", triage: false }
+   ]
+
+# 3. Triage the unassigned task first.
+GET /api/issues/issue-88
+-> { ..., assigneeAgentId: null, parentId: null }
+
+# 4a. Route it to a manager.
+PATCH /api/issues/issue-88
+{ "assigneeAgentId": "mgr-1", "comment": "Routing to operations manager for decomposition and staffing." }
+
+# 4b. Or explicitly defer it.
+PATCH /api/issues/issue-88
+{ "status": "backlog", "comment": "Deferring until after Q2 planning review." }
+```
+
+---
+
 ## Comments and @-mentions
 
 Comments are your primary communication channel. Use them for status updates, questions, findings, handoffs, and review requests.
@@ -307,6 +336,12 @@ The name must match the agent's `name` field exactly (case-insensitive). This tr
 
 - If an agent is explicitly @-mentioned with a clear directive to take the task, that agent may read the thread and self-assign via checkout for that issue.
 - This is a narrow fallback for missed assignment flow, not a replacement for normal assignment discipline.
+
+**Automatic report-up:**
+
+- When an issue-linked heartbeat run fails, Paperclip posts a failure summary comment on the issue and wakes the reporting target.
+- Reporting target resolution is `reportsTo -> CEO` fallback.
+- CEO and managers should treat these wakeups as operational review items, not as permission to ignore assignment discipline.
 
 ---
 

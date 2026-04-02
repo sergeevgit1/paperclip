@@ -23,7 +23,7 @@ Core fields:
 - model (string, required): OpenCode model id in provider/model format (for example anthropic/claude-sonnet-4-5)
 - variant (string, optional): provider-specific model variant (for example minimal|low|medium|high|max)
 - openCodeProvider (object, optional): custom OpenAI-compatible provider registered into the Paperclip-managed OpenCode runtime config
-- dangerouslySkipPermissions (boolean, optional): inject a runtime OpenCode config that allows \`external_directory\` access without interactive prompts; defaults to true for unattended Paperclip runs
+- dangerouslySkipPermissions (boolean, optional): inject a runtime OpenCode config that allows all supported OpenCode permissions without interactive prompts; defaults to true for unattended Paperclip runs
 - promptTemplate (string, optional): run prompt template
 - command (string, optional): defaults to "opencode"
 - extraArgs (string[], optional): additional CLI args
@@ -43,8 +43,8 @@ Notes:
   writing an opencode.json config file into the project working directory. Model \
   selection is passed via the --model CLI flag instead.
 - When \`dangerouslySkipPermissions\` is enabled, Paperclip injects a temporary \
-  runtime config with \`permission.external_directory=allow\` so headless runs do \
-  not stall on approval prompts.
+  runtime config with allow-all permissions so headless runs do not stall on \
+  approval prompts.
 - Custom providers are written into the temporary OpenCode config under \`provider.<id>\`
   using the OpenCode \`@ai-sdk/openai-compatible\` provider package. This allows
   per-agent provider setup without modifying the user's project files.

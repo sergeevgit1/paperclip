@@ -57,6 +57,48 @@ export function issueRoutes(db: Db, storage: StorageService) {
     limits: { fileSize: MAX_ATTACHMENT_BYTES, files: 1 },
   });
 
+  async function resolveCeoAgentId(companyId: string): Promise<string | null> {
+    const rows = await agentsSvc.list(companyId);
+    return rows.find((agent) => agent.role === "ceo")?.id ?? null;
+  }
+
+  function shouldQueueCeoTriageWake(issue: { assigneeAgentId: string | null; status: string }) {
+    return !issue.assigneeAgentId && ["todo", "blocked"].includes(issue.status);
+  }
+
+  async function queueCeoTriageWakeup(input: {
+    companyId: string;
+    issue: { id: string; identifier?: string | null; title?: string | null; assigneeAgentId: string | null; status: string };
+    reason: string;
+    source: "automation" | "assignment";
+    contextSource: string;
+    requestedByActorType?: "user" | "agent" | "system";
+    requestedByActorId?: string | null;
+  }) {
+    if (!shouldQueueCeoTriageWake(input.issue)) return;
+    const ceoAgentId = await resolveCeoAgentId(input.companyId);
+    if (!ceoAgentId) return;
+    await heartbeat.wakeup(ceoAgentId, {
+      source: input.source,
+      triggerDetail: "system",
+      reason: input.reason,
+      payload: {
+        issueId: input.issue.id,
+        issueIdentifier: input.issue.identifier ?? null,
+        issueTitle: input.issue.title ?? null,
+      },
+      requestedByActorType: input.requestedByActorType,
+      requestedByActorId: input.requestedByActorId ?? null,
+      contextSnapshot: {
+        issueId: input.issue.id,
+        taskId: input.issue.id,
+        source: input.contextSource,
+        wakeReason: input.reason,
+        triageQueue: true,
+      },
+    });
+  }
+
   function withContentPath<T extends { id: string }>(attachment: T) {
     return {
       ...attachment,
@@ -884,6 +926,16 @@ export function issueRoutes(db: Db, storage: StorageService) {
       requestedByActorId: actor.actorId,
     });
 
+    void queueCeoTriageWakeup({
+      companyId,
+      issue,
+      reason: "issue_unassigned",
+      source: "automation",
+      contextSource: "issue.create.unassigned",
+      requestedByActorType: actor.actorType,
+      requestedByActorId: actor.actorId,
+    }).catch((err) => logger.warn({ err, issueId: issue.id }, "failed to wake CEO on unassigned issue create"));
+
     res.status(201).json(issue);
   });
 
@@ -1056,6 +1108,27 @@ export function issueRoutes(db: Db, storage: StorageService) {
           requestedByActorId: actor.actorId,
           contextSnapshot: { issueId: issue.id, source: "issue.status_change" },
         });
+      }
+
+      if (shouldQueueCeoTriageWake(issue)) {
+        const ceoAgentId = await resolveCeoAgentId(issue.companyId);
+        if (ceoAgentId && !(actor.actorType === "agent" && actor.actorId === ceoAgentId)) {
+          wakeups.set(ceoAgentId, {
+            source: assigneeChanged ? "assignment" : "automation",
+            triggerDetail: "system",
+            reason: assigneeChanged ? "issue_unassigned" : "issue_triage_required",
+            payload: { issueId: issue.id, mutation: "update" },
+            requestedByActorType: actor.actorType,
+            requestedByActorId: actor.actorId,
+            contextSnapshot: {
+              issueId: issue.id,
+              taskId: issue.id,
+              source: assigneeChanged ? "issue.update.unassigned" : "issue.update.triage",
+              wakeReason: assigneeChanged ? "issue_unassigned" : "issue_triage_required",
+              triageQueue: true,
+            },
+          });
+        }
       }
 
       if (commentBody && comment) {
@@ -1238,6 +1311,16 @@ export function issueRoutes(db: Db, storage: StorageService) {
       entityType: "issue",
       entityId: released.id,
     });
+
+    void queueCeoTriageWakeup({
+      companyId: released.companyId,
+      issue: released,
+      reason: "issue_released_unassigned",
+      source: "automation",
+      contextSource: "issue.release",
+      requestedByActorType: actor.actorType,
+      requestedByActorId: actor.actorId,
+    }).catch((err) => logger.warn({ err, issueId: released.id }, "failed to wake CEO on released issue"));
 
     res.json(released);
   });

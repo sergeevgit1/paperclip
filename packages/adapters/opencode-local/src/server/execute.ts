@@ -36,6 +36,13 @@ function firstNonEmptyLine(text: string): string {
   );
 }
 
+function isOpenCodeToolPermissionRejected(message: string): boolean {
+  const normalized = message.trim();
+  if (!normalized) return false;
+  return /rejected permission to use this specific tool call/i.test(normalized)
+    || /user rejected permission.*tool call/i.test(normalized);
+}
+
 function parseModelProvider(model: string | null): string | null {
   if (!model) return null;
   const trimmed = model.trim();
@@ -377,6 +384,10 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
         parsedError ||
         stderrLine ||
         `OpenCode exited with code ${synthesizedExitCode ?? -1}`;
+      const errorCode =
+        (synthesizedExitCode ?? 0) !== 0 && isOpenCodeToolPermissionRejected(fallbackErrorMessage)
+          ? "opencode_tool_permission_rejected"
+          : null;
       const modelId = model || null;
 
       return {
@@ -384,6 +395,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
         signal: attempt.proc.signal,
         timedOut: false,
         errorMessage: (synthesizedExitCode ?? 0) === 0 ? null : fallbackErrorMessage,
+        errorCode,
         usage: {
           inputTokens: attempt.parsed.usage.inputTokens,
           outputTokens: attempt.parsed.usage.outputTokens,

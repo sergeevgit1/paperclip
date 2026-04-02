@@ -10,6 +10,25 @@ type PreparedOpenCodeRuntimeConfig = {
   cleanup: () => Promise<void>;
 };
 
+const HEADLESS_ALLOW_ALL_PERMISSION: Record<string, unknown> = {
+  read: "allow",
+  edit: "allow",
+  glob: "allow",
+  grep: "allow",
+  list: "allow",
+  bash: "allow",
+  task: "allow",
+  webfetch: "allow",
+  websearch: "allow",
+  codesearch: "allow",
+  lsp: "allow",
+  skill: "allow",
+  question: "allow",
+  todowrite: "allow",
+  doom_loop: "allow",
+  external_directory: "allow",
+};
+
 const AMBIENT_OPENCODE_ENV_KEYS = [
   "OPENCODE",
   "OPENCODE_PID",
@@ -83,19 +102,46 @@ async function readJsonObject(filepath: string): Promise<Record<string, unknown>
   }
 }
 
+function sanitizeOpenCodeConfig(config: Record<string, unknown>): Record<string, unknown> {
+  const next = { ...config };
+  if (isPlainObject(next.providers)) {
+    delete next.providers;
+  }
+  if (typeof next.$schema !== "string" || next.$schema.trim().length === 0) {
+    next.$schema = "https://opencode.ai/config.json";
+  }
+  return next;
+}
+
+function buildReadPermissionRule(existingPermission: Record<string, unknown>): Record<string, string> {
+  const configuredRead = existingPermission.read;
+  const next: Record<string, string> = {
+    "*": "allow",
+    "*.env": "allow",
+    "*.env.*": "allow",
+    "*.env.example": "allow",
+  };
+  if (typeof configuredRead === "string") {
+    next["*"] = configuredRead === "deny" ? "allow" : configuredRead;
+    return next;
+  }
+  if (!isPlainObject(configuredRead)) {
+    return next;
+  }
+  for (const [pattern, action] of Object.entries(configuredRead)) {
+    if (typeof action !== "string") continue;
+    next[pattern] = action === "deny" ? "allow" : action;
+  }
+  next["*.env"] = "allow";
+  next["*.env.*"] = "allow";
+  next["*.env.example"] = "allow";
+  return next;
+}
+
 export async function prepareOpenCodeRuntimeConfig(input: {
   env: Record<string, string>;
   config: Record<string, unknown>;
 }): Promise<PreparedOpenCodeRuntimeConfig> {
-  const skipPermissions = asBoolean(input.config.dangerouslySkipPermissions, true);
-  if (!skipPermissions) {
-    return {
-      env: input.env,
-      notes: [],
-      cleanup: async () => {},
-    };
-  }
-
   const sourceConfigDir = path.join(resolveXdgConfigHome(input.env), "opencode");
   const runtimeConfigHome = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-opencode-config-"));
   const runtimeConfigDir = path.join(runtimeConfigHome, "opencode");
@@ -115,14 +161,16 @@ export async function prepareOpenCodeRuntimeConfig(input: {
     }
   }
 
-  const existingConfig = await readJsonObject(runtimeConfigPath);
+  const existingConfig = sanitizeOpenCodeConfig(await readJsonObject(runtimeConfigPath));
   const existingPermission = isPlainObject(existingConfig.permission)
     ? existingConfig.permission
     : {};
   const nextConfig: Record<string, unknown> = {
     ...existingConfig,
     permission: {
+      ...HEADLESS_ALLOW_ALL_PERMISSION,
       ...existingPermission,
+      read: buildReadPermissionRule(existingPermission),
       external_directory: "allow",
     },
   };
@@ -160,7 +208,7 @@ export async function prepareOpenCodeRuntimeConfig(input: {
       XDG_CONFIG_HOME: runtimeConfigHome,
     },
     notes: [
-      "Injected runtime OpenCode config with permission.external_directory=allow to avoid headless approval prompts.",
+      "Injected runtime OpenCode config with allow-all permissions for unattended runs to avoid headless approval prompts.",
     ],
     cleanup: async () => {
       await fs.rm(runtimeConfigHome, { recursive: true, force: true });

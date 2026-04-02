@@ -358,6 +358,48 @@ async function resolveLedgerScopeForRun(
   };
 }
 
+async function resolveEscalationAgentId(
+  db: Db,
+  companyId: string,
+  agentId: string,
+): Promise<string | null> {
+  const rows = await db
+    .select({ id: agents.id, role: agents.role, reportsTo: agents.reportsTo, status: agents.status })
+    .from(agents)
+    .where(eq(agents.companyId, companyId));
+  const activeRows = rows.filter((row) => row.status !== "terminated" && row.status !== "pending_approval");
+  const actor = activeRows.find((row) => row.id === agentId) ?? null;
+  if (actor?.reportsTo) {
+    const manager = activeRows.find((row) => row.id === actor.reportsTo) ?? null;
+    if (manager) return manager.id;
+  }
+  return activeRows.find((row) => row.role === "ceo")?.id ?? null;
+}
+
+function buildIssueRunFailureSummary(input: {
+  agentName: string;
+  issueIdentifier: string | null;
+  issueTitle: string | null;
+  runId: string;
+  error: string | null;
+  resultJson: Record<string, unknown> | null | undefined;
+}) {
+  const resultSummary = summarizeHeartbeatRunResultJson(input.resultJson);
+  const summaryText =
+    readNonEmptyString(resultSummary?.summary) ??
+    readNonEmptyString(resultSummary?.result) ??
+    readNonEmptyString(resultSummary?.message) ??
+    input.error ??
+    "Run failed";
+  const issueLabel = input.issueIdentifier ?? input.issueTitle ?? "issue";
+  return [
+    `[paperclip] ${input.agentName} needs review on ${issueLabel}.`,
+    `- Outcome: failed`,
+    `- Summary: ${summaryText}`,
+    `- Run: ${input.runId}`,
+  ].join("\n");
+}
+
 type ResumeSessionRow = {
   sessionParamsJson: Record<string, unknown> | null;
   sessionDisplayId: string | null;
@@ -2819,6 +2861,44 @@ export function heartbeatService(db: Db) {
           level: "error",
           message,
         });
+        if (issueContext?.id) {
+          const escalationAgentId = await resolveEscalationAgentId(db, agent.companyId, agent.id);
+          const failureComment = buildIssueRunFailureSummary({
+            agentName: agent.name,
+            issueIdentifier: issueContext.identifier ?? null,
+            issueTitle: issueContext.title ?? null,
+            runId: failedRun.id,
+            error: message,
+            resultJson: failedRun.resultJson,
+          });
+          await issuesSvc.addComment(issueContext.id, failureComment, { agentId: agent.id }).catch((commentErr) =>
+            logger.warn({ err: commentErr, issueId: issueContext.id, runId: failedRun.id }, "failed to post failure escalation comment"));
+          if (escalationAgentId && escalationAgentId !== agent.id) {
+            await enqueueWakeup(escalationAgentId, {
+              source: "automation",
+              triggerDetail: "system",
+              reason: "issue_reported_up",
+              payload: {
+                issueId: issueContext.id,
+                runId: failedRun.id,
+                sourceAgentId: agent.id,
+                sourceAgentName: agent.name,
+                outcome: "failed",
+              },
+              requestedByActorType: "system",
+              requestedByActorId: null,
+              contextSnapshot: {
+                issueId: issueContext.id,
+                taskId: issueContext.id,
+                source: "heartbeat.failure.report_up",
+                wakeReason: "issue_reported_up",
+                reportedByAgentId: agent.id,
+                reportedRunId: failedRun.id,
+              },
+            }).catch((wakeErr: unknown) =>
+              logger.warn({ err: wakeErr, issueId: issueContext.id, agentId: escalationAgentId }, "failed to wake escalation agent after run failure"));
+          }
+        }
         await releaseIssueExecutionAndPromote(failedRun);
 
         await updateRuntimeState(agent, failedRun, {

@@ -383,6 +383,10 @@ export function agentRoutes(db: Db) {
     adapterConfig: Record<string, unknown>,
   ): Record<string, unknown> {
     const next = { ...adapterConfig };
+    if (adapterType === "opencode_local") {
+      next.dangerouslySkipPermissions = true;
+      return ensureGatewayDeviceKey(adapterType, next);
+    }
     if (adapterType === "codex_local") {
       if (!asNonEmptyString(next.model)) {
         next.model = DEFAULT_CODEX_LOCAL_MODEL;
@@ -1015,10 +1019,35 @@ export function agentRoutes(db: Db) {
     }
 
     const issuesSvc = issueService(db);
+    const actorAgent = await svc.getById(req.actor.agentId);
+    if (!actorAgent) {
+      res.status(404).json({ error: "Agent not found" });
+      return;
+    }
+
     const rows = await issuesSvc.list(req.actor.companyId, {
       assigneeAgentId: req.actor.agentId,
       status: "todo,in_progress,blocked",
     });
+
+    const staleThresholdMs = 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    const triageRows = actorAgent.role === "ceo"
+      ? await issuesSvc.list(req.actor.companyId, {
+          status: "todo,in_progress,blocked",
+        })
+      : [];
+
+    const triageIssueIds = new Set(rows.map((issue) => issue.id));
+    for (const issue of triageRows) {
+      const updatedAtMs = new Date(issue.updatedAt).getTime();
+      const isStale = Number.isFinite(updatedAtMs) && now - updatedAtMs >= staleThresholdMs;
+      const needsTriage = !issue.assigneeAgentId || isStale;
+      if (needsTriage && !triageIssueIds.has(issue.id)) {
+        rows.push(issue);
+        triageIssueIds.add(issue.id);
+      }
+    }
 
     res.json(
       rows.map((issue) => ({
@@ -1032,6 +1061,11 @@ export function agentRoutes(db: Db) {
         parentId: issue.parentId,
         updatedAt: issue.updatedAt,
         activeRun: issue.activeRun,
+        triage: actorAgent.role === "ceo" && !issue.assigneeAgentId,
+        stale:
+          actorAgent.role === "ceo" &&
+          Number.isFinite(new Date(issue.updatedAt).getTime()) &&
+          now - new Date(issue.updatedAt).getTime() >= staleThresholdMs,
       })),
     );
   });
@@ -1230,6 +1264,10 @@ export function agentRoutes(db: Db) {
         ...hireInput,
         adapterConfig: normalizedAdapterConfig,
       };
+      if ((normalizedHireInput.role ?? "general") !== "ceo" && !normalizedHireInput.reportsTo) {
+        res.status(422).json({ error: "Non-CEO agents must report to a manager or CEO" });
+        return;
+      }
 
       const company = await db
         .select()

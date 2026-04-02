@@ -1,0 +1,7 @@
+tunnel: 216e144e-f6bb-4a42-becf-b4109176eb98
+credentials-file: /etc/cloudflared/216e144e-f6bb-4a42-becf-b4109176eb98.json
+
+ingress:
+  - hostname: company.unicrawl.ru
+    service: http://host.docker.internal:3100
+  - service: http_status:404

@@ -42,6 +42,25 @@ describe("parseOpenCodeJsonl", () => {
     expect(parsed.errorMessage).toContain("model unavailable");
   });
 
+  it("parses tool permission rejection errors", () => {
+    const stdout = [
+      JSON.stringify({
+        type: "tool_use",
+        sessionID: "session_456",
+        part: {
+          state: {
+            status: "error",
+            error: "The user rejected permission to use this specific tool call.",
+          },
+        },
+      }),
+    ].join("\n");
+
+    const parsed = parseOpenCodeJsonl(stdout);
+    expect(parsed.sessionId).toBe("session_456");
+    expect(parsed.errorMessage).toBe("The user rejected permission to use this specific tool call.");
+  });
+
   it("detects unknown session errors", () => {
     expect(isOpenCodeUnknownSessionError("Session not found: s_123", "")).toBe(true);
     expect(isOpenCodeUnknownSessionError("", "unknown session id")).toBe(true);

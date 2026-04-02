@@ -99,7 +99,7 @@ export async function testEnvironment(
     checks.push({
       code: "opencode_headless_permissions_enabled",
       level: "info",
-      message: "Headless OpenCode external-directory permissions are auto-approved for unattended runs.",
+      message: "Headless OpenCode permissions are auto-approved for unattended runs.",
     });
   }
   try {

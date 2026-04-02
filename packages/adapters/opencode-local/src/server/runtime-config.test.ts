@@ -31,7 +31,7 @@ async function makeConfigHome(initialConfig?: Record<string, unknown>) {
 }
 
 describe("prepareOpenCodeRuntimeConfig", () => {
-  it("injects an external_directory allow rule by default", async () => {
+  it("injects allow-all permissions by default", async () => {
     const configHome = await makeConfigHome({
       permission: {
         read: "allow",
@@ -55,7 +55,14 @@ describe("prepareOpenCodeRuntimeConfig", () => {
     expect(runtimeConfig).toMatchObject({
       theme: "system",
       permission: {
+        bash: "allow",
+        edit: "allow",
+        glob: "allow",
+        grep: "allow",
+        list: "allow",
         read: "allow",
+        task: "allow",
+        webfetch: "allow",
         external_directory: "allow",
       },
     });

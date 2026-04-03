@@ -80,8 +80,9 @@ async function countDirectoryEntries(targetPath: string): Promise<number | null>
 
 async function rootLooksLikeCodebase(targetPath: string): Promise<boolean> {
   try {
-    const entries = new Set(await fs.readdir(targetPath));
-    return [
+    const entries = await fs.readdir(targetPath, { withFileTypes: true });
+    const entryNames = new Set(entries.map((entry) => entry.name));
+    const directMatch = [
       "package.json",
       "pnpm-workspace.yaml",
       "turbo.json",
@@ -94,7 +95,35 @@ async function rootLooksLikeCodebase(targetPath: string): Promise<boolean> {
       "packages",
       "README.md",
       "Dockerfile",
-    ].some((entry) => entries.has(entry));
+    ].some((entry) => entryNames.has(entry));
+    if (directMatch) return true;
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      if (entry.name.startsWith(".")) continue;
+      const nestedPath = path.join(targetPath, entry.name);
+      const nestedEntries = new Set(await fs.readdir(nestedPath).catch(() => []));
+      if (
+        [
+          "package.json",
+          "pnpm-workspace.yaml",
+          "turbo.json",
+          "Cargo.toml",
+          "go.mod",
+          "pyproject.toml",
+          ".git",
+          "src",
+          "apps",
+          "packages",
+          "README.md",
+          "Dockerfile",
+        ].some((candidate) => nestedEntries.has(candidate))
+      ) {
+        return true;
+      }
+    }
+
+    return false;
   } catch {
     return false;
   }

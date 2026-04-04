@@ -25,6 +25,8 @@
 
 ## What is Paperclip?
 
+Planning documents and roadmaps live in `doc/plans/`.
+
 # Open-source orchestration for zero-human companies
 
 **If OpenClaw is an _employee_, Paperclip is the _company_**

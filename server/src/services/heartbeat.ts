@@ -3088,7 +3088,13 @@ export function heartbeatService(db: Db) {
         exitCode: adapterResult.exitCode,
         signal: adapterResult.signal,
         usageJson,
-        resultJson: adapterResult.resultJson ?? null,
+        resultJson:
+          adapterResult.resultJson || adapterResult.summary
+            ? {
+                ...(adapterResult.resultJson ?? {}),
+                ...(adapterResult.summary ? { summary: adapterResult.summary } : {}),
+              }
+            : null,
         sessionIdAfter: nextSessionState.displayId ?? nextSessionState.legacySessionId,
         stdoutExcerpt,
         stderrExcerpt,

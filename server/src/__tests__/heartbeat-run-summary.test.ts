@@ -30,4 +30,16 @@ describe("summarizeHeartbeatRunResultJson", () => {
     expect(summarizeHeartbeatRunResultJson(["nope"] as unknown as Record<string, unknown>)).toBeNull();
     expect(summarizeHeartbeatRunResultJson({ nested: { only: "ignored" } })).toBeNull();
   });
+
+  it("preserves an adapter-provided summary even when raw stdout is also present", () => {
+    const summary = summarizeHeartbeatRunResultJson({
+      stdout: '{"type":"text","text":"full transcript"}',
+      stderr: "",
+      summary: "Here are the created resource links.",
+    });
+
+    expect(summary).toEqual({
+      summary: "Here are the created resource links.",
+    });
+  });
 });

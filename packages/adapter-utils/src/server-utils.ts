@@ -21,6 +21,23 @@ interface RunningProcess {
   graceSec: number;
 }
 
+function killChildProcessTree(child: ChildProcess, signal: NodeJS.Signals) {
+  if (typeof child.pid !== "number" || child.pid <= 0) return;
+  if (process.platform !== "win32") {
+    try {
+      process.kill(-child.pid, signal);
+      return;
+    } catch {
+      // Fall through to direct child kill if process-group kill is unavailable.
+    }
+  }
+  try {
+    child.kill(signal);
+  } catch {
+    // Ignore cleanup errors.
+  }
+}
+
 interface SpawnTarget {
   command: string;
   args: string[];
@@ -812,6 +829,7 @@ export async function runChildProcess(
         const child = spawn(target.command, target.args, {
           cwd: opts.cwd,
           env: mergedEnv,
+          detached: process.platform !== "win32",
           shell: false,
           stdio: [opts.stdin != null ? "pipe" : "ignore", "pipe", "pipe"],
         }) as ChildProcessWithEvents;
@@ -839,10 +857,10 @@ export async function runChildProcess(
           opts.timeoutSec > 0
             ? setTimeout(() => {
                 timedOut = true;
-                child.kill("SIGTERM");
+                killChildProcessTree(child, "SIGTERM");
                 setTimeout(() => {
                   if (!child.killed) {
-                    child.kill("SIGKILL");
+                    killChildProcessTree(child, "SIGKILL");
                   }
                 }, Math.max(1, opts.graceSec) * 1000);
               }, opts.timeoutSec * 1000)

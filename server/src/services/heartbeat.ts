@@ -4040,15 +4040,33 @@ export function heartbeatService(db: Db) {
     if (!run) throw notFound("Heartbeat run not found");
     if (run.status !== "running" && run.status !== "queued") return run;
 
+    const killRecordedPid = (signal: NodeJS.Signals) => {
+      if (!run.processPid || run.processPid <= 0 || process.platform === "win32") return;
+      try {
+        process.kill(-run.processPid, signal);
+      } catch {
+        try {
+          process.kill(run.processPid, signal);
+        } catch {
+          // Ignore cleanup errors.
+        }
+      }
+    };
+
     const running = runningProcesses.get(run.id);
     if (running) {
+      killRecordedPid("SIGTERM");
       running.child.kill("SIGTERM");
       const graceMs = Math.max(1, running.graceSec) * 1000;
       setTimeout(() => {
         if (!running.child.killed) {
+          killRecordedPid("SIGKILL");
           running.child.kill("SIGKILL");
         }
       }, graceMs);
+    } else {
+      killRecordedPid("SIGTERM");
+      setTimeout(() => killRecordedPid("SIGKILL"), 1000);
     }
 
     const cancelled = await setRunStatus(run.id, "cancelled", {

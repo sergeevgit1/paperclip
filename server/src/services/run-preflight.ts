@@ -7,7 +7,12 @@ import {
   resolveDefaultAgentWorkspaceDir,
   resolveManagedProjectWorkspaceDir as resolveManagedProjectWorkspaceDirFromHomePaths,
 } from "../home-paths.js";
+import { agentService } from "./agents.js";
 import { agentInstructionsService } from "./agent-instructions.js";
+import {
+  loadDefaultAgentInstructionsBundle,
+  resolveDefaultAgentInstructionsBundleRole,
+} from "./default-agent-instructions.js";
 
 export type RunPreflightSeverity = "info" | "warn" | "error";
 
@@ -50,6 +55,10 @@ type AgentRowLike = {
   id: string;
   companyId: string;
   name: string;
+  role?: string;
+  title?: string | null;
+  capabilities?: string | null;
+  adapterType?: string;
   adapterConfig: unknown;
 };
 
@@ -63,6 +72,46 @@ function readNonEmptyString(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+async function repairManagedInstructionsBundleIfNeeded(input: {
+  db: Db;
+  agent: AgentRowLike;
+}): Promise<AgentRowLike> {
+  if (input.agent.adapterType !== "openclaw_gateway") {
+    return input.agent;
+  }
+
+  const adapterConfig = asRecord(input.agent.adapterConfig);
+  const hasExplicitInstructionsBundle =
+    Boolean(readNonEmptyString(adapterConfig.instructionsBundleMode))
+    || Boolean(readNonEmptyString(adapterConfig.instructionsRootPath))
+    || Boolean(readNonEmptyString(adapterConfig.instructionsEntryFile))
+    || Boolean(readNonEmptyString(adapterConfig.instructionsFilePath))
+    || Boolean(readNonEmptyString(adapterConfig.agentsMdPath));
+  if (hasExplicitInstructionsBundle) {
+    return input.agent;
+  }
+
+  const instructions = agentInstructionsService();
+  const files = await loadDefaultAgentInstructionsBundle(
+    resolveDefaultAgentInstructionsBundleRole(input.agent.role ?? "general"),
+    {
+      name: input.agent.name,
+      role: input.agent.role ?? "general",
+      title: input.agent.title ?? null,
+      capabilities: input.agent.capabilities ?? null,
+    },
+  );
+  const materialized = await instructions.materializeManagedBundle(input.agent, files, {
+    entryFile: "AGENTS.md",
+    replaceExisting: false,
+  });
+  const updated = await agentService(input.db).update(input.agent.id, {
+    adapterConfig: materialized.adapterConfig,
+  });
+
+  return updated ?? { ...input.agent, adapterConfig: materialized.adapterConfig };
 }
 
 async function directoryExists(targetPath: string): Promise<boolean> {
@@ -251,8 +300,12 @@ export async function runHeartbeatPreflight(input: {
   resolvedWorkspaceSource: "project_primary" | "task_session" | "agent_home";
 }) : Promise<RunPreflightReport> {
   const checks: RunPreflightCheck[] = [];
-  const adapterConfig = asRecord(input.agent.adapterConfig);
-  const instructions = await agentInstructionsService().getBundle(input.agent);
+  const effectiveAgent = await repairManagedInstructionsBundleIfNeeded({
+    db: input.db,
+    agent: input.agent,
+  });
+  const adapterConfig = asRecord(effectiveAgent.adapterConfig);
+  const instructions = await agentInstructionsService().getBundle(effectiveAgent);
   const requiredBundleFiles = ["AGENTS.md", "HEARTBEAT.md", "SOUL.md", "TOOLS.md"];
   const bundleFiles = new Set(instructions.files.map((file) => file.path));
 
@@ -308,16 +361,21 @@ export async function runHeartbeatPreflight(input: {
 
   const issueId = readNonEmptyString(input.context.issueId);
   const projectId = readNonEmptyString(input.context.projectId);
-  const issueProjectId = issueId
+  const issueProjectRef = issueId
     ? await input.db
-        .select({ projectId: issues.projectId })
+        .select({ projectId: issues.projectId, projectWorkspaceId: issues.projectWorkspaceId })
         .from(issues)
         .where(and(eq(issues.id, issueId), eq(issues.companyId, input.agent.companyId)))
-        .then((rows) => rows[0]?.projectId ?? null)
+        .then((rows) => rows[0] ?? null)
     : null;
-  const effectiveProjectId = issueProjectId ?? projectId;
+  const effectiveProjectId = issueProjectRef?.projectId ?? projectId;
+  const effectiveProjectWorkspaceId = issueProjectRef?.projectWorkspaceId ?? readNonEmptyString(input.context.projectWorkspaceId);
+  const shouldRequireProjectWorkspaceChecks =
+    Boolean(effectiveProjectWorkspaceId) ||
+    input.resolvedWorkspaceSource === "project_primary" ||
+    input.resolvedWorkspaceSource === "task_session";
 
-  if (effectiveProjectId) {
+  if (effectiveProjectId && shouldRequireProjectWorkspaceChecks) {
     const diagnostics = await collectProjectDiagnostics(input.db, effectiveProjectId);
     if (!diagnostics) {
       checks.push({
@@ -351,7 +409,11 @@ export async function runHeartbeatPreflight(input: {
 
   if (input.resolvedWorkspaceSource === "agent_home") {
     const agentHome = resolveDefaultAgentWorkspaceDir(input.agent.id);
-    if (path.resolve(input.resolvedWorkspaceCwd) === path.resolve(agentHome) && effectiveProjectId) {
+    if (
+      path.resolve(input.resolvedWorkspaceCwd) === path.resolve(agentHome) &&
+      effectiveProjectId &&
+      shouldRequireProjectWorkspaceChecks
+    ) {
       checks.push({
         code: "workspace.project_fallback_agent_home",
         severity: "error",
@@ -366,9 +428,9 @@ export async function runHeartbeatPreflight(input: {
 
   if (adapterConfig.instructionsFilePath && !instructions.resolvedEntryPath) {
     checks.push({
-      code: "instructions.entry_unresolved",
-      severity: "error",
-      message: "Adapter config points to an instructions file path that could not be resolved.",
+        code: "instructions.entry_unresolved",
+        severity: "error",
+        message: "Adapter config points to an instructions file path that could not be resolved.",
       details: {
         instructionsFilePath: adapterConfig.instructionsFilePath,
       },

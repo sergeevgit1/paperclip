@@ -10,6 +10,8 @@ const mockProjectService = vi.hoisted(() => ({
   getById: vi.fn(),
   create: vi.fn(),
   createWorkspace: vi.fn(),
+  createManagedPrimaryWorkspace: vi.fn(),
+  remove: vi.fn(),
   resolveByReference: vi.fn(),
 }));
 
@@ -78,6 +80,19 @@ describe("project and goal telemetry routes", () => {
     mockGetTelemetryClient.mockReturnValue({ track: vi.fn() });
     mockProjectService.resolveByReference.mockResolvedValue({ ambiguous: false, project: null });
     mockProjectService.create.mockResolvedValue({
+      id: "project-1",
+      companyId: "company-1",
+      name: "Telemetry project",
+      description: null,
+      status: "backlog",
+    });
+    mockProjectService.createManagedPrimaryWorkspace.mockResolvedValue({
+      id: "workspace-1",
+      projectId: "project-1",
+      name: "Primary Workspace",
+      isPrimary: true,
+    });
+    mockProjectService.getById.mockResolvedValue({
       id: "project-1",
       companyId: "company-1",
       name: "Telemetry project",

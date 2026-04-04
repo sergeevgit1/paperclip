@@ -5,6 +5,8 @@ import type {
 } from "@paperclipai/adapter-utils";
 import { asNumber, asString, buildPaperclipEnv, parseObject } from "@paperclipai/adapter-utils/server-utils";
 import crypto, { randomUUID } from "node:crypto";
+import fs from "node:fs/promises";
+import path from "node:path";
 import { WebSocket } from "ws";
 
 type SessionKeyStrategy = "fixed" | "issue" | "run";
@@ -313,6 +315,62 @@ function resolvePaperclipApiUrlOverride(value: unknown): string | null {
   }
 }
 
+function normalizeInstructionRelativePath(value: string): string | null {
+  const normalized = path.posix.normalize(value.replaceAll("\\", "/")).replace(/^\/+/, "");
+  if (!normalized || normalized === "." || normalized === ".." || normalized.startsWith("../")) {
+    return null;
+  }
+  return normalized;
+}
+
+function resolveInstructionPathWithinRoot(rootPath: string, relativePath: string): string | null {
+  const normalizedRelativePath = normalizeInstructionRelativePath(relativePath);
+  if (!normalizedRelativePath) return null;
+  const absoluteRoot = path.resolve(rootPath);
+  const absolutePath = path.resolve(absoluteRoot, normalizedRelativePath);
+  const relativeToRoot = path.relative(absoluteRoot, absolutePath);
+  if (relativeToRoot === ".." || relativeToRoot.startsWith(`..${path.sep}`)) {
+    return null;
+  }
+  return absolutePath;
+}
+
+async function loadManagedInstructionsOverlay(config: Record<string, unknown>): Promise<string | null> {
+  const rootPath = nonEmpty(config.instructionsRootPath);
+  if (!rootPath) return null;
+
+  const filesToRead = [
+    nonEmpty(config.instructionsEntryFile) ?? "AGENTS.md",
+    "HEARTBEAT.md",
+    "SOUL.md",
+    "TOOLS.md",
+    "ROLE.md",
+  ];
+  const seen = new Set<string>();
+  const sections: string[] = [];
+
+  for (const fileName of filesToRead) {
+    const normalized = normalizeInstructionRelativePath(fileName);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    const absolutePath = resolveInstructionPathWithinRoot(rootPath, normalized);
+    if (!absolutePath) continue;
+    const content = await fs.readFile(absolutePath, "utf8").catch(() => null);
+    if (!content || content.trim().length === 0) continue;
+    sections.push(`## ${normalized}\n${content.trim()}`);
+  }
+
+  if (sections.length === 0) return null;
+  return [
+    "Paperclip role overlay:",
+    "- These instructions apply only while you are acting as a Paperclip employee for this wake event.",
+    "- Keep your normal OpenClaw identity and general chat behavior outside Paperclip work.",
+    "- If the Paperclip workflow conflicts with your default behavior, prefer the Paperclip instructions for this run only.",
+    "",
+    ...sections,
+  ].join("\n");
+}
+
 function buildPaperclipEnvForWake(ctx: AdapterExecutionContext, wakePayload: WakePayload): Record<string, string> {
   const paperclipApiUrlOverride = resolvePaperclipApiUrlOverride(ctx.config.paperclipApiUrl);
   const paperclipEnv: Record<string, string> = {
@@ -410,9 +468,10 @@ function buildWakeText(payload: WakePayload, paperclipEnv: Record<string, string
   return lines.join("\n");
 }
 
-function appendWakeText(baseText: string, wakeText: string): string {
+function appendWakeText(baseText: string, wakeText: string, instructionsOverlay?: string | null): string {
   const trimmedBase = baseText.trim();
-  return trimmedBase.length > 0 ? `${trimmedBase}\n\n${wakeText}` : wakeText;
+  const sections = [trimmedBase, instructionsOverlay?.trim() ?? "", wakeText].filter((value) => value.length > 0);
+  return sections.join("\n\n");
 }
 
 function buildStandardPaperclipPayload(
@@ -1054,6 +1113,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   const wakePayload = buildWakePayload(ctx);
   const paperclipEnv = buildPaperclipEnvForWake(ctx, wakePayload);
   const wakeText = buildWakeText(wakePayload, paperclipEnv);
+  const instructionsOverlay = await loadManagedInstructionsOverlay(parseObject(ctx.config));
 
   const sessionKeyStrategy = normalizeSessionKeyStrategy(ctx.config.sessionKeyStrategy);
   const configuredSessionKey = nonEmpty(ctx.config.sessionKey);
@@ -1065,7 +1125,9 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   });
 
   const templateMessage = nonEmpty(payloadTemplate.message) ?? nonEmpty(payloadTemplate.text);
-  const message = templateMessage ? appendWakeText(templateMessage, wakeText) : wakeText;
+  const message = templateMessage
+    ? appendWakeText(templateMessage, wakeText, instructionsOverlay)
+    : appendWakeText("", wakeText, instructionsOverlay);
   const paperclipPayload = buildStandardPaperclipPayload(ctx, wakePayload, paperclipEnv, payloadTemplate);
 
   const agentParams: Record<string, unknown> = {

@@ -35,10 +35,14 @@ const mockBoardAuthService = vi.hoisted(() => ({
 }));
 
 const mockLogActivity = vi.hoisted(() => vi.fn());
+const mockAgentInstructionsService = vi.hoisted(() => ({
+  materializeManagedBundle: vi.fn(),
+}));
 
 vi.mock("../services/index.js", () => ({
   accessService: () => mockAccessService,
   agentService: () => mockAgentService,
+  agentInstructionsService: () => mockAgentInstructionsService,
   boardAuthService: () => mockBoardAuthService,
   deduplicateAgentName: vi.fn(),
   logActivity: mockLogActivity,

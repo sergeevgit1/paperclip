@@ -43,11 +43,16 @@ import { validate } from "../middleware/validate.js";
 import {
   accessService,
   agentService,
+  agentInstructionsService,
   boardAuthService,
   deduplicateAgentName,
   logActivity,
   notifyHireApproved
 } from "../services/index.js";
+import {
+  loadDefaultAgentInstructionsBundle,
+  resolveDefaultAgentInstructionsBundleRole,
+} from "../services/default-agent-instructions.js";
 import { assertCompanyAccess } from "./authz.js";
 import {
   claimBoardOwnership,
@@ -1579,6 +1584,49 @@ export function accessRoutes(
   const access = accessService(db);
   const boardAuth = boardAuthService(db);
   const agents = agentService(db);
+  const instructions = agentInstructionsService();
+
+  async function ensureManagedInstructionsForApprovedAgent(agent: {
+    id: string;
+    companyId: string;
+    name: string;
+    role: string;
+    title?: string | null;
+    capabilities?: string | null;
+    adapterType: string;
+    adapterConfig: unknown;
+  }) {
+    if (agent.adapterType !== "openclaw_gateway") {
+      return agent;
+    }
+
+    const adapterConfig = isPlainObject(agent.adapterConfig)
+      ? (agent.adapterConfig as Record<string, unknown>)
+      : {};
+    const hasExplicitInstructionsBundle =
+      typeof adapterConfig.instructionsBundleMode === "string" && adapterConfig.instructionsBundleMode.trim().length > 0
+      || typeof adapterConfig.instructionsRootPath === "string" && adapterConfig.instructionsRootPath.trim().length > 0
+      || typeof adapterConfig.instructionsEntryFile === "string" && adapterConfig.instructionsEntryFile.trim().length > 0
+      || typeof adapterConfig.instructionsFilePath === "string" && adapterConfig.instructionsFilePath.trim().length > 0
+      || typeof adapterConfig.agentsMdPath === "string" && adapterConfig.agentsMdPath.trim().length > 0;
+    if (hasExplicitInstructionsBundle) {
+      return agent;
+    }
+
+    const files = await loadDefaultAgentInstructionsBundle(resolveDefaultAgentInstructionsBundleRole(agent.role), {
+      name: agent.name,
+      role: agent.role,
+      title: agent.title ?? null,
+      capabilities: agent.capabilities ?? null,
+    });
+    const materialized = await instructions.materializeManagedBundle(agent, files, {
+      entryFile: "AGENTS.md",
+      replaceExisting: false,
+    });
+
+    const updated = await agents.update(agent.id, { adapterConfig: materialized.adapterConfig });
+    return updated ?? { ...agent, adapterConfig: materialized.adapterConfig };
+  }
 
   async function assertInstanceAdmin(req: Request) {
     if (req.actor.type !== "board") throw unauthorized();
@@ -2409,6 +2457,7 @@ export function accessRoutes(
         if (!updatedAgent) {
           throw conflict("Approved join request agent not found");
         }
+        await ensureManagedInstructionsForApprovedAgent(updatedAgent);
         await logActivity(db, {
           companyId,
           actorType: req.actor.type === "agent" ? "agent" : "user",
@@ -2682,6 +2731,7 @@ export function accessRoutes(
           lastHeartbeatAt: null,
           metadata: null
         });
+        await ensureManagedInstructionsForApprovedAgent(created);
         createdAgentId = created.id;
         await access.ensureMembership(
           companyId,

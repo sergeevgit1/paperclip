@@ -1596,7 +1596,7 @@ export function accessRoutes(
     adapterType: string;
     adapterConfig: unknown;
   }) {
-    if (agent.adapterType !== "openclaw_gateway") {
+    if (agent.adapterType !== "openclaw_gateway" && agent.adapterType !== "opencode_local") {
       return agent;
     }
 

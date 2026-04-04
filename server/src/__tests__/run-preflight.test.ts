@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { agents, companies, createDb, instanceSettings, issues, projects } from "@paperclipai/db";
+import { agents, companies, createDb, instanceSettings, issues, projectWorkspaces, projects } from "@paperclipai/db";
 import {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
@@ -30,6 +30,7 @@ describeEmbeddedPostgres("runHeartbeatPreflight", () => {
 
   afterEach(async () => {
     await db.delete(issues);
+    await db.delete(projectWorkspaces);
     await db.delete(projects);
     await db.delete(agents);
     await db.delete(instanceSettings);
@@ -114,5 +115,93 @@ describeEmbeddedPostgres("runHeartbeatPreflight", () => {
     expect(report.checks.some((check) => check.code === "project.codebase_missing")).toBe(false);
 
     await fs.rm(workspaceDir, { recursive: true, force: true });
+  });
+
+  it("does not require a codebase checkout for empty local_path project workspaces", async () => {
+    const companyId = randomUUID();
+    const agentId = randomUUID();
+    const issueId = randomUUID();
+    const projectId = randomUUID();
+    const workspaceId = randomUUID();
+    const instructionsDir = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-preflight-noncode-instructions-"));
+    const projectWorkspaceDir = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-preflight-noncode-workspace-"));
+
+    await db.insert(companies).values({
+      id: companyId,
+      name: "Paperclip",
+      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      requireBoardApprovalForNewAgents: false,
+    });
+
+    await db.insert(agents).values({
+      id: agentId,
+      companyId,
+      name: "Operator",
+      role: "operator",
+      status: "active",
+      adapterType: "opencode_local",
+      adapterConfig: {},
+      runtimeConfig: {},
+      permissions: {},
+    });
+
+    await db.insert(projects).values({
+      id: projectId,
+      companyId,
+      name: "Client delivery project",
+      status: "in_progress",
+    });
+
+    await db.insert(projectWorkspaces).values({
+      id: workspaceId,
+      companyId,
+      projectId,
+      name: "_default",
+      cwd: projectWorkspaceDir,
+      sourceType: "local_path",
+      isPrimary: true,
+    });
+
+    await db.insert(issues).values({
+      id: issueId,
+      companyId,
+      projectId,
+      projectWorkspaceId: workspaceId,
+      title: "Operational issue",
+      status: "todo",
+      priority: "medium",
+    });
+
+    await fs.writeFile(path.join(instructionsDir, "AGENTS.md"), "agent instructions\n", "utf8");
+    await fs.writeFile(path.join(instructionsDir, "HEARTBEAT.md"), "heartbeat instructions\n", "utf8");
+    await fs.writeFile(path.join(instructionsDir, "SOUL.md"), "soul instructions\n", "utf8");
+    await fs.writeFile(path.join(instructionsDir, "TOOLS.md"), "tools instructions\n", "utf8");
+
+    const report = await runHeartbeatPreflight({
+      db,
+      agent: {
+        id: agentId,
+        companyId,
+        name: "Operator",
+        adapterConfig: {
+          instructionsBundleMode: "managed",
+          instructionsRootPath: instructionsDir,
+          instructionsFilePath: path.join(instructionsDir, "AGENTS.md"),
+          instructionsEntryFile: "AGENTS.md",
+        },
+      },
+      context: {
+        issueId,
+        projectId,
+      },
+      resolvedWorkspaceCwd: projectWorkspaceDir,
+      resolvedWorkspaceSource: "project_primary",
+    });
+
+    expect(report.ok).toBe(true);
+    expect(report.checks.some((check) => check.code === "project.codebase_missing")).toBe(false);
+
+    await fs.rm(instructionsDir, { recursive: true, force: true });
+    await fs.rm(projectWorkspaceDir, { recursive: true, force: true });
   });
 });

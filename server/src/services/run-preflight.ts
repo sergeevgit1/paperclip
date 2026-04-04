@@ -48,6 +48,7 @@ export interface ProjectDiagnostics {
   managedFolderExists: boolean;
   managedFolderEntryCount: number | null;
   codebaseReady: boolean;
+  nonCodeWorkspaceReady: boolean;
   warnings: string[];
 }
 
@@ -233,6 +234,23 @@ function deriveRepoNameFromRepoUrl(repoUrl: string | null): string | null {
   }
 }
 
+async function ensureNonCodeWorkspaceBootstrap(cwd: string) {
+  await fs.mkdir(cwd, { recursive: true });
+  const readmePath = path.join(cwd, "README.md");
+  const existing = await fs.stat(readmePath).then((stats) => stats.isFile()).catch(() => false);
+  if (existing) return;
+  await fs.writeFile(
+    readmePath,
+    [
+      "# Paperclip Project Workspace",
+      "",
+      "This workspace was created automatically for a non-code project.",
+      "Use it to store working files, notes, drafts, and related project artifacts.",
+    ].join("\n"),
+    "utf8",
+  );
+}
+
 function resolveManagedProjectWorkspaceDir(input: {
   companyId: string;
   projectId: string;
@@ -271,6 +289,14 @@ export async function collectProjectDiagnostics(db: Db, projectId: string): Prom
     .where(and(eq(projectWorkspaces.companyId, project.companyId), eq(projectWorkspaces.projectId, project.id)))
     .orderBy(desc(projectWorkspaces.isPrimary), asc(projectWorkspaces.createdAt), asc(projectWorkspaces.id));
 
+  for (const workspace of workspaceRows) {
+    const cwd = readNonEmptyString(workspace.cwd);
+    const repoUrl = readNonEmptyString(workspace.repoUrl);
+    if (cwd && workspace.sourceType === "local_path" && !repoUrl) {
+      await ensureNonCodeWorkspaceBootstrap(cwd);
+    }
+  }
+
   const workspaceDiagnostics = await Promise.all(
     workspaceRows.map(async (workspace) => {
       const cwd = readNonEmptyString(workspace.cwd);
@@ -304,6 +330,9 @@ export async function collectProjectDiagnostics(db: Db, projectId: string): Prom
     }),
   ).then((values) => values.some(Boolean));
   const managedCodebaseReady = managedFolderExists ? await rootLooksLikeCodebase(managedFolder) : false;
+  const nonCodeWorkspaceReady = workspaceDiagnostics.some(
+    (workspace) => workspace.cwdExists && workspace.sourceType === "local_path" && !workspace.repoUrl,
+  );
 
   const warnings: string[] = [];
   if (workspaceDiagnostics.length === 0) {
@@ -315,7 +344,7 @@ export async function collectProjectDiagnostics(db: Db, projectId: string): Prom
   if (primaryWorkspace && (!primaryWorkspace.cwd || !primaryWorkspace.cwdExists)) {
     warnings.push("Primary workspace cwd is missing or unavailable.");
   }
-  if (!workspaceCodebaseReady && !managedCodebaseReady) {
+  if (!workspaceCodebaseReady && !managedCodebaseReady && !nonCodeWorkspaceReady) {
     warnings.push("No attached workspace currently looks like a codebase checkout.");
   }
 
@@ -330,6 +359,7 @@ export async function collectProjectDiagnostics(db: Db, projectId: string): Prom
     managedFolderExists,
     managedFolderEntryCount,
     codebaseReady: workspaceCodebaseReady || managedCodebaseReady,
+    nonCodeWorkspaceReady,
     warnings,
   };
 }
@@ -449,7 +479,7 @@ export async function runHeartbeatPreflight(input: {
           details: { projectId: diagnostics.projectId },
         });
       }
-      if (!diagnostics.codebaseReady) {
+      if (!diagnostics.codebaseReady && !diagnostics.nonCodeWorkspaceReady) {
         checks.push({
           code: "project.codebase_missing",
           severity: "error",

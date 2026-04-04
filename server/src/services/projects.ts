@@ -24,6 +24,23 @@ type ProjectRow = typeof projects.$inferSelect;
 type ProjectWorkspaceRow = typeof projectWorkspaces.$inferSelect;
 type WorkspaceRuntimeServiceRow = typeof workspaceRuntimeServices.$inferSelect;
 const REPO_ONLY_CWD_SENTINEL = "/__paperclip_repo_only__";
+
+async function ensureNonCodeWorkspaceBootstrap(cwd: string) {
+  await fs.mkdir(cwd, { recursive: true });
+  const readmePath = `${cwd.replace(/\/+$/, "")}/README.md`;
+  const existing = await fs.stat(readmePath).then((stats) => stats.isFile()).catch(() => false);
+  if (existing) return;
+  await fs.writeFile(
+    readmePath,
+    [
+      "# Paperclip Project Workspace",
+      "",
+      "This workspace was created automatically for a non-code project.",
+      "Use it to store working files, notes, drafts, and related project artifacts.",
+    ].join("\n"),
+    "utf8",
+  );
+}
 type CreateWorkspaceInput = {
   name?: string | null;
   sourceType?: string | null;
@@ -517,6 +534,9 @@ export function projectService(db: Db) {
       const managedFolderExists = await directoryExists(managedFolder);
       const managedFolderEntryCount = managedFolderExists ? await countDirectoryEntries(managedFolder) : null;
       const managedFolderLooksLikeCodebase = managedFolderExists ? await rootLooksLikeCodebase(managedFolder) : false;
+      const nonCodeWorkspaceReady = workspaceDiagnostics.some(
+        (workspace) => workspace.cwdExists && workspace.sourceType === "local_path" && !workspace.repoUrl,
+      );
 
       const warnings: string[] = [];
       if (workspaceDiagnostics.length === 0) warnings.push("Project has no attached workspaces.");
@@ -527,7 +547,7 @@ export function projectService(db: Db) {
       const codebaseReady =
         workspaceDiagnostics.some((workspace) => workspace.looksLikeCodebase)
         || managedFolderLooksLikeCodebase;
-      if (!codebaseReady) {
+      if (!codebaseReady && !nonCodeWorkspaceReady) {
         warnings.push("No attached workspace currently looks like a codebase checkout.");
       }
 
@@ -543,6 +563,7 @@ export function projectService(db: Db) {
         managedFolderEntryCount,
         managedFolderLooksLikeCodebase,
         codebaseReady,
+        nonCodeWorkspaceReady,
         warnings,
       };
     },
@@ -683,7 +704,12 @@ export function projectService(db: Db) {
 
       const cwd = normalizeWorkspaceCwd(data.cwd);
       if (cwd && data.createIfMissing) {
-        await fs.mkdir(cwd, { recursive: true });
+        const repoUrl = readNonEmptyString(data.repoUrl);
+        if (repoUrl) {
+          await fs.mkdir(cwd, { recursive: true });
+        } else {
+          await ensureNonCodeWorkspaceBootstrap(cwd);
+        }
       }
       const repoUrl = readNonEmptyString(data.repoUrl);
       const sourceType = readNonEmptyString(data.sourceType) ?? (repoUrl ? "git_repo" : cwd ? "local_path" : "remote_managed");
@@ -780,7 +806,11 @@ export function projectService(db: Db) {
       });
 
       return await db.transaction(async (tx) => {
-        await fs.mkdir(cwd, { recursive: true });
+        if (repoUrl) {
+          await fs.mkdir(cwd, { recursive: true });
+        } else {
+          await ensureNonCodeWorkspaceBootstrap(cwd);
+        }
         const row = await tx
           .insert(projectWorkspaces)
           .values({

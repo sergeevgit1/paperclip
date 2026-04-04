@@ -56,6 +56,7 @@ export function NewProjectDialog() {
   const [targetDate, setTargetDate] = useState("");
   const [expanded, setExpanded] = useState(false);
   const [workspaceLocalPath, setWorkspaceLocalPath] = useState("");
+  const [createWorkspaceFolder, setCreateWorkspaceFolder] = useState(false);
   const [workspaceRepoUrl, setWorkspaceRepoUrl] = useState("");
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
 
@@ -92,6 +93,11 @@ export function NewProjectDialog() {
     return options;
   }, [agents]);
 
+  const managedWorkspacePathPreview = useMemo(() => {
+    const companySegment = selectedCompanyId?.trim() || "<company-id>";
+    return `PAPERCLIP_HOME/instances/default/projects/${companySegment}/<project-id>/_default`;
+  }, [selectedCompanyId]);
+
   const createProject = useMutation({
     mutationFn: (data: Record<string, unknown>) =>
       projectsApi.create(selectedCompanyId!, data),
@@ -112,6 +118,7 @@ export function NewProjectDialog() {
     setTargetDate("");
     setExpanded(false);
     setWorkspaceLocalPath("");
+    setCreateWorkspaceFolder(false);
     setWorkspaceRepoUrl("");
     setWorkspaceError(null);
   }
@@ -178,6 +185,7 @@ export function NewProjectDialog() {
             ? deriveWorkspaceNameFromPath(localPath)
             : deriveWorkspaceNameFromRepo(repoUrl),
           ...(localPath ? { cwd: localPath } : {}),
+          ...(localPath && createWorkspaceFolder ? { createIfMissing: true } : {}),
           ...(repoUrl ? { repoUrl } : {}),
         };
         await projectsApi.createWorkspace(created.id, workspacePayload);
@@ -313,7 +321,7 @@ export function NewProjectDialog() {
                   <HelpCircle className="h-3 w-3 text-muted-foreground/50 cursor-help" />
                 </TooltipTrigger>
                 <TooltipContent side="top" className="max-w-[240px] text-xs">
-                  Set an absolute path on this machine where local agents will read and write files for this project.
+                  Set an absolute path on this machine where local agents will read and write files for this project. If left blank, Paperclip will create a managed project folder automatically.
                 </TooltipContent>
               </Tooltip>
             </div>
@@ -326,6 +334,21 @@ export function NewProjectDialog() {
               />
               <ChoosePathButton />
             </div>
+            <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+              <input
+                type="checkbox"
+                className="h-3.5 w-3.5 rounded border-border"
+                checked={createWorkspaceFolder}
+                onChange={(e) => setCreateWorkspaceFolder(e.target.checked)}
+                disabled={!workspaceLocalPath.trim()}
+              />
+              <span>Create this folder if it does not exist yet</span>
+            </label>
+            {!workspaceLocalPath.trim() && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                Default managed folder: <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">{managedWorkspacePathPreview}</code>
+              </p>
+            )}
           </div>
 
           {workspaceError && (

@@ -120,8 +120,16 @@ export function projectRoutes(db: Db) {
         return;
       }
       createdWorkspaceId = createdWorkspace.id;
+    } else {
+      const managedWorkspace = await svc.createManagedPrimaryWorkspace(project.id);
+      if (!managedWorkspace) {
+        await svc.remove(project.id);
+        res.status(422).json({ error: "Failed to create default project workspace" });
+        return;
+      }
+      createdWorkspaceId = managedWorkspace.id;
     }
-    const hydratedProject = workspace ? await svc.getById(project.id) : project;
+    const hydratedProject = await svc.getById(project.id);
 
     const actor = getActorInfo(req);
     await logActivity(db, {

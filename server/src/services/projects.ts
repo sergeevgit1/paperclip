@@ -28,6 +28,7 @@ type CreateWorkspaceInput = {
   name?: string | null;
   sourceType?: string | null;
   cwd?: string | null;
+  createIfMissing?: boolean;
   repoUrl?: string | null;
   repoRef?: string | null;
   defaultRef?: string | null;
@@ -42,6 +43,12 @@ type CreateWorkspaceInput = {
   isPrimary?: boolean;
 };
 type UpdateWorkspaceInput = Partial<CreateWorkspaceInput>;
+
+type CreateManagedPrimaryWorkspaceInput = {
+  repoUrl?: string | null;
+  repoRef?: string | null;
+  defaultRef?: string | null;
+};
 
 interface ProjectWithGoals extends Omit<ProjectRow, "executionWorkspacePolicy"> {
   urlKey: string;
@@ -675,6 +682,9 @@ export function projectService(db: Db) {
       if (!project) return null;
 
       const cwd = normalizeWorkspaceCwd(data.cwd);
+      if (cwd && data.createIfMissing) {
+        await fs.mkdir(cwd, { recursive: true });
+      }
       const repoUrl = readNonEmptyString(data.repoUrl);
       const sourceType = readNonEmptyString(data.sourceType) ?? (repoUrl ? "git_repo" : cwd ? "local_path" : "remote_managed");
       const remoteWorkspaceRef = readNonEmptyString(data.remoteWorkspaceRef);
@@ -742,6 +752,53 @@ export function projectService(db: Db) {
       });
 
       return created ? toWorkspace(created) : null;
+    },
+
+    createManagedPrimaryWorkspace: async (
+      projectId: string,
+      data: CreateManagedPrimaryWorkspaceInput = {},
+    ): Promise<ProjectWorkspace | null> => {
+      const project = await db
+        .select()
+        .from(projects)
+        .where(eq(projects.id, projectId))
+        .then((rows) => rows[0] ?? null);
+      if (!project) return null;
+
+      const existing = await db
+        .select({ id: projectWorkspaces.id })
+        .from(projectWorkspaces)
+        .where(eq(projectWorkspaces.projectId, projectId))
+        .then((rows) => rows[0] ?? null);
+      if (existing) return null;
+
+      const repoUrl = readNonEmptyString(data.repoUrl);
+      const cwd = resolveManagedProjectWorkspaceDir({
+        companyId: project.companyId,
+        projectId,
+        repoName: deriveRepoNameFromRepoUrl(repoUrl),
+      });
+
+      return await db.transaction(async (tx) => {
+        await fs.mkdir(cwd, { recursive: true });
+        const row = await tx
+          .insert(projectWorkspaces)
+          .values({
+            companyId: project.companyId,
+            projectId,
+            name: deriveWorkspaceName({ cwd, repoUrl }),
+            sourceType: repoUrl ? "git_repo" : "local_path",
+            cwd,
+            repoUrl: repoUrl ?? null,
+            repoRef: readNonEmptyString(data.repoRef),
+            defaultRef: readNonEmptyString(data.defaultRef) ?? readNonEmptyString(data.repoRef),
+            visibility: "default",
+            isPrimary: true,
+          })
+          .returning()
+          .then((rows) => rows[0] ?? null);
+        return row ? toWorkspace(row) : null;
+      });
     },
 
     updateWorkspace: async (

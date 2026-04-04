@@ -55,6 +55,11 @@ function resolveOpenCodeBiller(env: Record<string, string>, provider: string | n
   return inferOpenAiCompatibleBiller(env, null) ?? provider ?? "unknown";
 }
 
+export function injectConcreteAgentHomePaths(contents: string, agentHome: string): string {
+  if (!agentHome.trim()) return contents;
+  return contents.replace(/\$AGENT_HOME\//g, `${agentHome.replace(/\/+$/, "")}/`);
+}
+
 function claudeSkillsHome(): string {
   return path.join(os.homedir(), ".claude", "skills");
 }
@@ -251,11 +256,16 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     let instructionsPrefix = "";
     if (resolvedInstructionsFilePath) {
       try {
-        const instructionsContents = await fs.readFile(resolvedInstructionsFilePath, "utf8");
+        const rawInstructionsContents = await fs.readFile(resolvedInstructionsFilePath, "utf8");
+        const instructionsContents = injectConcreteAgentHomePaths(rawInstructionsContents, effectiveAgentHome);
         instructionsPrefix =
           `${instructionsContents}\n\n` +
           `The above agent instructions were loaded from ${resolvedInstructionsFilePath}. ` +
-          `Resolve any relative file references from ${instructionsDir}.\n\n`;
+          `Resolve any relative file references from ${instructionsDir}.\n` +
+          (effectiveAgentHome
+            ? `When the instructions mention $AGENT_HOME, use the concrete path ${effectiveAgentHome}.\n`
+            : "") +
+          `Do not invent shortened paths like /agents/...; use the exact paths above.\n\n`;
       } catch (err) {
         const reason = err instanceof Error ? err.message : String(err);
         await onLog(
